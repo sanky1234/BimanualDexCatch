@@ -327,7 +327,7 @@ class DreamCatchUR3(VecTask):
                 rand_rot[:, -1] = self.ur3_rotation_noise * (-1. + np.random.rand() * 2.0)
                 new_quat = axisangle2quat(rand_rot).squeeze().numpy().tolist()
                 ur3_start_pose.r = gymapi.Quat(*new_quat)
-            ur3_actor = self.gym.create_actor(env_ptr, ur3_asset, ur3_start_pose, "ur3", i, 0, 0)
+            ur3_actor = self.gym.create_actor(env_ptr, ur3_asset, ur3_start_pose, "ur3", i, 3, 0) # TODO, default: i,0,0
             self.gym.set_actor_dof_properties(env_ptr, ur3_actor, ur3_dof_props)
 
             if self.aggregate_mode == 2:
@@ -429,7 +429,7 @@ class DreamCatchUR3(VecTask):
 
         # Initialize indices
         self._global_indices = torch.arange(self.num_envs * 5, dtype=torch.int32,
-                                           device=self.device).view(self.num_envs, -1)
+                                            device=self.device).view(self.num_envs, -1)
 
     def _update_states(self):
         self.states.update({
@@ -466,14 +466,14 @@ class DreamCatchUR3(VecTask):
     def sync_robotiq_gripper_pos(self, env_ids, instant_update=False):
         # Left joints
         actuator = self._q[env_ids, 7]
-        self._q[env_ids, 6] = actuator * 0.9
+        self._q[env_ids, 6] = actuator * 1.0
         self._q[env_ids, 7] = actuator * 1.0    # <revolute>
-        self._q[env_ids, 8] = actuator * -1.2
+        self._q[env_ids, 8] = actuator * -1.0
 
         # Right joints
-        self._q[env_ids, 9] = actuator * -0.9
+        self._q[env_ids, 9] = actuator * -1.0
         self._q[env_ids, 10] = actuator * -1.0  # <revolute>
-        self._q[env_ids, 11] = actuator * 1.2
+        self._q[env_ids, 11] = actuator * 1.0
 
         if instant_update:
             multi_env_ids_int32 = self._global_indices[env_ids, 0].flatten()
@@ -688,28 +688,26 @@ class DreamCatchUR3(VecTask):
 
         # Control gripper
         drive_id = 7  # actuator joint ID
-        u_fingers = torch.zeros_like(self._gripper_control)
-        actuation = torch.clamp(u_gripper * 0.5, self.ur3_dof_lower_limits[drive_id], self.ur3_dof_upper_limits[drive_id])
-
-        # Left finger joints
-        u_fingers[:, 6 - 6] = actuation * 1.0
-        u_fingers[:, 7 - 6] = actuation * 1.0
-        u_fingers[:, 8 - 6] = actuation * -1.0
-
-        # Right finger joints
-        u_fingers[:, 9 - 6] = actuation * -1.0
-        u_fingers[:, 10 - 6] = actuation * -1.0
-        u_fingers[:, 11 - 6] = actuation * 1.0
 
         # Write gripper command to appropriate tensor buffer
-        self._gripper_control[:, :] = u_fingers
+        self._gripper_control[:, drive_id - 6] += u_gripper * 0.01
+        self._gripper_control[:, drive_id - 6] = tensor_clamp(self._gripper_control[:, drive_id - 6],
+                                                              self.ur3_dof_lower_limits[drive_id],
+                                                              self.ur3_dof_upper_limits[drive_id])
+        u_finger = self._gripper_control[:, drive_id - 6]
+        # Left finger joints
+        self._gripper_control[:, 6 - 6] = u_finger * 1.0    # left inner knuckle
+        self._gripper_control[:, 7 - 6] = u_finger * 1.0    # left knuckle <revolute>
+        self._gripper_control[:, 8 - 6] = u_finger * -1.0   # left finger-tip
+
+        # Right finger joints
+        self._gripper_control[:, 9 - 6] = u_finger * -1.0   # right inner knuckle
+        self._gripper_control[:, 10 - 6] = u_finger * -1.0  # right knuckle <revolute>
+        self._gripper_control[:, 11 - 6] = u_finger * 1.0   # right finger-tip
 
         # Deploy actions
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self._pos_control))
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
-
-        # self._q[:, drive_id] = actuation
-        # self.sync_robotiq_gripper_pos(env_ids=self.get_all_env_ids(), instant_update=True)
 
     def post_physics_step(self):
         self.progress_buf += 1
