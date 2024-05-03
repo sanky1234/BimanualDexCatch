@@ -206,7 +206,7 @@ class DreamCatchUR3(VecTask):
         asset_options.use_mesh_materials = True
         ur3_asset = self.gym.load_asset(self.sim, asset_root, ur3_asset_file, asset_options)
 
-        ur3_dof_stiffness = to_torch([0, 0, 0, 0, 0, 0, 7000., 7000., 7000., 7000., 7000., 7000.], dtype=torch.float, device=self.device)
+        ur3_dof_stiffness = to_torch([0, 0, 0, 0, 0, 0, 70000., 70000., 70000., 70000., 70000., 70000.], dtype=torch.float, device=self.device)
         ur3_dof_damping = to_torch([0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50], dtype=torch.float, device=self.device)
 
         # Create table asset
@@ -265,7 +265,7 @@ class DreamCatchUR3(VecTask):
         self._ur3_effort_limits = to_torch(self._ur3_effort_limits, device=self.device)
         self.ur3_dof_speed_scales = torch.ones_like(self.ur3_dof_lower_limits)
         self.ur3_dof_speed_scales[[6, 7, 8, 9, 10, 11]] = 0.1
-        ur3_dof_props['effort'][6:12] = 200
+        # ur3_dof_props['effort'][6:12] = 200
         # ur3_dof_props['effort'][8] = 200
 
         # Define start pose for franka
