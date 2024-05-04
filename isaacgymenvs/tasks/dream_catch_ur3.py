@@ -33,7 +33,7 @@ import torch
 from isaacgym import gymtorch
 from isaacgym import gymapi
 
-from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp, quat_from_euler_xyz
+from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp, quat_from_euler_xyz, quat_apply
 from isaacgymenvs.tasks.base.vec_task import VecTask
 from isaacgymenvs.tasks.utils.general_utils import deg2rad
 
@@ -369,9 +369,9 @@ class DreamCatchUR3(VecTask):
         self.handles = {
             # UR3
             "hand": self.gym.find_actor_rigid_body_handle(env_ptr, ur3_handle, "ur3e_tool0"),
-            # "leftfinger_tip": self.gym.find_actor_rigid_body_handle(env_ptr, ur3_handle, "panda_leftfinger_tip"),
-            # "rightfinger_tip": self.gym.find_actor_rigid_body_handle(env_ptr, ur3_handle, "panda_rightfinger_tip"),
-            # "grip_site": self.gym.find_actor_rigid_body_handle(env_ptr, ur3_handle, "panda_grip_site"),
+            "leftfinger_tip": self.gym.find_actor_rigid_body_handle(env_ptr, ur3_handle, "robotiq_85_left_finger_tip_link"),
+            "rightfinger_tip": self.gym.find_actor_rigid_body_handle(env_ptr, ur3_handle, "robotiq_85_right_finger_tip_link"),
+            "grip_site": self.gym.find_actor_rigid_body_handle(env_ptr, ur3_handle, "ur3e_grip_site"),
             # Cubes
             "cubeA_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cubeA_id, "box"),
             "cubeB_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cubeB_id, "box"),
@@ -389,9 +389,10 @@ class DreamCatchUR3(VecTask):
         self._rigid_body_state = gymtorch.wrap_tensor(_rigid_body_state_tensor).view(self.num_envs, -1, 13)
         self._q = self._dof_state[..., 0]
         self._qd = self._dof_state[..., 1]
-        self._eef_state = self._rigid_body_state[:, self.handles["hand"], :]       # TODO, "grip_site" should be defined...
-        # self._eef_lf_state = self._rigid_body_state[:, self.handles["leftfinger_tip"], :]
-        # self._eef_rf_state = self._rigid_body_state[:, self.handles["rightfinger_tip"], :]
+        self._eef_state = self._rigid_body_state[:, self.handles["grip_site"], :]
+        # self._grip_state = self._rigid_body_state[:, self.handles["grip_site"], :]
+        self._eef_lf_state = self._rigid_body_state[:, self.handles["leftfinger_tip"], :]
+        self._eef_rf_state = self._rigid_body_state[:, self.handles["rightfinger_tip"], :]
         _jacobian = self.gym.acquire_jacobian_tensor(self.sim, "ur3")
         jacobian = gymtorch.wrap_tensor(_jacobian)
 
@@ -434,13 +435,16 @@ class DreamCatchUR3(VecTask):
     def _update_states(self):
         self.states.update({
             # UR3
-            "q": self._q[:, :],
-            "q_gripper": self._q[:, 8].unsqueeze(-1),
+            "q": self._q[:, :6],
+            "q_gripper": self._q[:, 7].unsqueeze(-1),
             "eef_pos": self._eef_state[:, :3],
             "eef_quat": self._eef_state[:, 3:7],
             "eef_vel": self._eef_state[:, 7:],
-            # "eef_lf_pos": self._eef_lf_state[:, :3],
-            # "eef_rf_pos": self._eef_rf_state[:, :3],
+            # "grip_pos": self._grip_state[:, :3],
+            # "grip_quat": self._grip_state[:, 3:7],
+            # "grip_vel": self._grip_state[:, 7:],
+            "eef_lf_pos": self._eef_lf_state[:, :3],
+            "eef_rf_pos": self._eef_rf_state[:, :3],
             # Cubes
             "cubeA_quat": self._cubeA_state[:, 3:7],
             "cubeA_pos": self._cubeA_state[:, :3],
@@ -690,7 +694,7 @@ class DreamCatchUR3(VecTask):
         drive_id = 7  # actuator joint ID
 
         # Write gripper command to appropriate tensor buffer
-        self._gripper_control[:, drive_id - 6] += u_gripper * 0.01
+        self._gripper_control[:, drive_id - 6] += u_gripper * 1.0
         self._gripper_control[:, drive_id - 6] = tensor_clamp(self._gripper_control[:, drive_id - 6],
                                                               self.ur3_dof_lower_limits[drive_id],
                                                               self.ur3_dof_upper_limits[drive_id])
