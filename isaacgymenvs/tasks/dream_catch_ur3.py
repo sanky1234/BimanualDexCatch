@@ -25,6 +25,7 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+import time
 
 import numpy as np
 import os
@@ -146,14 +147,18 @@ class DreamCatchUR3(VecTask):
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
         # UR3 defaults
+        self.default_pose = {"forward": [deg2rad(0.0), deg2rad(-90.0), deg2rad(-110.0), deg2rad(-160.0), deg2rad(-90.0), deg2rad(0.0)],
+                             "downward": [deg2rad(0.0), deg2rad(-120.0), deg2rad(-114.0), deg2rad(-36.0), deg2rad(80.0), deg2rad(0.0)]}
+        # Forward: deg2rad(0.0), deg2rad(-90.0), deg2rad(-110.0), deg2rad(-160.0), deg2rad(-90.0), deg2rad(0.0)
+        # Downward: deg2rad(0.0), deg2rad(-120.0), deg2rad(-114.0), deg2rad(-36.0), deg2rad(80.0), deg2rad(0.0)
         self.ur3_default_dof_pos = to_torch(
-            [deg2rad(0.0), deg2rad(-90.0), deg2rad(-110.0), deg2rad(-160.0), deg2rad(-90.0), deg2rad(0.0),
-             deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)], device=self.device
+            self.default_pose["downward"] +
+            [deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)], device=self.device
         )
 
         # OSC Gains
         nj = 6   # actual # of joints
-        self.kp = to_torch([150.] * 6, device=self.device)
+        self.kp = to_torch([100.] * 6, device=self.device)
         self.kd = 2 * torch.sqrt(self.kp)
         self.kp_null = to_torch([10.] * nj, device=self.device)
         self.kd_null = 2 * torch.sqrt(self.kp_null)
@@ -327,7 +332,7 @@ class DreamCatchUR3(VecTask):
                 rand_rot[:, -1] = self.ur3_rotation_noise * (-1. + np.random.rand() * 2.0)
                 new_quat = axisangle2quat(rand_rot).squeeze().numpy().tolist()
                 ur3_start_pose.r = gymapi.Quat(*new_quat)
-            ur3_actor = self.gym.create_actor(env_ptr, ur3_asset, ur3_start_pose, "ur3", i, 3, 0) # TODO, default: i,0,0
+            ur3_actor = self.gym.create_actor(env_ptr, ur3_asset, ur3_start_pose, "ur3", i, 8, 0) # TODO, default: i,0,0
             self.gym.set_actor_dof_properties(env_ptr, ur3_actor, ur3_dof_props)
 
             if self.aggregate_mode == 2:
@@ -433,6 +438,15 @@ class DreamCatchUR3(VecTask):
                                             device=self.device).view(self.num_envs, -1)
 
     def _update_states(self):
+        # Finger Offset
+        lf_pos = self._eef_lf_state[:, :3]
+        lf_rot = self._eef_lf_state[:, 3:7]
+        rf_pos = self._eef_rf_state[:, :3]
+        rf_rot = self._eef_rf_state[:, 3:7]
+
+        _lf_pos = (lf_pos + quat_apply(lf_rot, to_torch([-0.6174, 0, 0.7866], device=self.device).repeat((self.num_envs, 1)) * 0.04))
+        _rf_pos = (rf_pos + quat_apply(rf_rot, to_torch([0.6174, 0, 0.7866], device=self.device).repeat((self.num_envs, 1)) * 0.04))
+
         self.states.update({
             # UR3
             "q": self._q[:, :6],
@@ -443,8 +457,10 @@ class DreamCatchUR3(VecTask):
             # "grip_pos": self._grip_state[:, :3],
             # "grip_quat": self._grip_state[:, 3:7],
             # "grip_vel": self._grip_state[:, 7:],
-            "eef_lf_pos": self._eef_lf_state[:, :3],
-            "eef_rf_pos": self._eef_rf_state[:, :3],
+            "eef_lf_pos": _lf_pos,
+            "eef_lf_quat": self._eef_lf_state[:, 3:7],
+            "eef_rf_pos": _rf_pos,
+            "eef_rf_quat": self._eef_rf_state[:, 3:7],
             # Cubes
             "cubeA_quat": self._cubeA_state[:, 3:7],
             "cubeA_pos": self._cubeA_state[:, :3],
@@ -675,8 +691,8 @@ class DreamCatchUR3(VecTask):
 
     def pre_physics_step(self, actions):
         mask = torch.zeros_like(actions)
-        mask[:, -1] = 1.0
-        self.actions = actions.clone().to(self.device) * mask
+        # mask[:, 0] = 1.0
+        self.actions = actions.clone().to(self.device)
 
         # Split arm and gripper command
         u_arm, u_gripper = self.actions[:, :-1], self.actions[:, -1]
@@ -694,7 +710,9 @@ class DreamCatchUR3(VecTask):
         drive_id = 7  # actuator joint ID
 
         # Write gripper command to appropriate tensor buffer
-        self._gripper_control[:, drive_id - 6] += u_gripper * 1.0
+        # Robotiq_2F-85 max grasp speed: 150 mm/s (0.15 m/s)
+        grip_step = 0.15 * self.dt
+        self._gripper_control[:, drive_id - 6] += u_gripper * grip_step
         self._gripper_control[:, drive_id - 6] = tensor_clamp(self._gripper_control[:, drive_id - 6],
                                                               self.ur3_dof_lower_limits[drive_id],
                                                               self.ur3_dof_upper_limits[drive_id])
@@ -731,14 +749,21 @@ class DreamCatchUR3(VecTask):
             # Grab relevant states to visualize
             eef_pos = self.states["eef_pos"]
             eef_rot = self.states["eef_quat"]
+            lf_pos = self.states["eef_lf_pos"]
+            lf_rot = self.states["eef_lf_quat"]
+            rf_pos = self.states["eef_rf_pos"]
+            rf_quat = self.states["eef_rf_quat"]
             cubeA_pos = self.states["cubeA_pos"]
             cubeA_rot = self.states["cubeA_quat"]
             cubeB_pos = self.states["cubeB_pos"]
             cubeB_rot = self.states["cubeB_quat"]
 
+            pos_list = [lf_pos, rf_pos]
+            rot_list = [lf_rot, rf_quat]
+
             # Plot visualizations
             for i in range(self.num_envs):
-                for pos, rot in zip((eef_pos, cubeA_pos, cubeB_pos), (eef_rot, cubeA_rot, cubeB_rot)):
+                for pos, rot in zip(tuple(pos_list), tuple(rot_list)):
                     px = (pos[i] + quat_apply(rot[i], to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
                     py = (pos[i] + quat_apply(rot[i], to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
                     pz = (pos[i] + quat_apply(rot[i], to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
@@ -768,8 +793,10 @@ def compute_franka_reward(
     d = torch.norm(states["cubeA_pos_relative"], dim=-1)
     d_lf = torch.norm(states["cubeA_pos"] - states["eef_lf_pos"], dim=-1)
     d_rf = torch.norm(states["cubeA_pos"] - states["eef_rf_pos"], dim=-1)
+    d_ff = torch.norm(states["eef_lf_pos"] - states["eef_rf_pos"], dim=-1)
+    dist_reward = torch.where(d < 0.002, 1 - torch.tanh(10.0 * (d + d_lf + d_rf) / 3),
+                              1 - torch.tanh(10.0 * (d + d_ff) / 3))
     # dist_reward = 1 - torch.tanh(10.0 * (d + d_lf + d_rf) / 3)
-    dist_reward = torch.zeros_like(d)   # TODO
 
     # reward for lifting cubeA
     cubeA_height = states["cubeA_pos"][:, 2] - reward_settings["table_height"]
@@ -802,6 +829,8 @@ def compute_franka_reward(
     )
 
     # Compute resets
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (stack_reward > 0), torch.ones_like(reset_buf), reset_buf)
+    # drop_reset = (states["cubeA_pos"][:, 2] < -0.05) | (states["cubeB_pos"][:, 2] < -0.05)
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (stack_reward > 0),
+                            torch.ones_like(reset_buf), reset_buf)
 
     return rewards, reset_buf
