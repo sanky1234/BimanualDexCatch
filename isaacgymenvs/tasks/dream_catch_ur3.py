@@ -731,6 +731,7 @@ class DreamCatchUR3(VecTask):
 
         # Deploy actions
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self._pos_control))
+        self.sync_robotiq_gripper_pos(env_ids=self.get_all_env_ids(), instant_update=True)
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
     def post_physics_step(self):
