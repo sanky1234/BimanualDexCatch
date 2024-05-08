@@ -216,17 +216,22 @@ class DreamCatchUR3(VecTask):
 
         # Create table asset
         table_pos = [0.0, 0.0, 1.0]
+        table_breadth = 0.805  # y-direction
+        table_length = 0.760  # x-direction
         table_thickness = 0.05
         table_opts = gymapi.AssetOptions()
         table_opts.fix_base_link = True
-        table_asset = self.gym.create_box(self.sim, *[1.2, 1.2, table_thickness], table_opts)
+        table_asset = self.gym.create_box(self.sim, *[table_breadth, table_length, table_thickness], table_opts)
 
         # Create table stand asset
-        table_stand_height = 0.1
-        table_stand_pos = [-0.5, 0.0, 1.0 + table_thickness / 2 + table_stand_height / 2]
+        table_stand_height = 0.012
+        table_stand_breadth = 0.13    # y-direction
+        table_stand_length = 0.13   # x-direction
+        table_stand_px = -table_breadth / 2 + table_stand_length * 0.5
+        table_stand_pos = [table_stand_px, 0.0, 1.0 + table_thickness / 2 + table_stand_height / 2]
         table_stand_opts = gymapi.AssetOptions()
         table_stand_opts.fix_base_link = True
-        table_stand_asset = self.gym.create_box(self.sim, *[0.2, 0.2, table_stand_height], table_opts)
+        table_stand_asset = self.gym.create_box(self.sim, *[table_stand_breadth, table_stand_length, table_stand_height], table_opts)
 
         self.cubeA_size = 0.050
         self.cubeB_size = 0.070
@@ -275,7 +280,7 @@ class DreamCatchUR3(VecTask):
 
         # Define start pose for franka
         ur3_start_pose = gymapi.Transform()
-        ur3_start_pose.p = gymapi.Vec3(-0.45, 0.0, 1.0 + table_thickness / 2 + table_stand_height)
+        ur3_start_pose.p = gymapi.Vec3(table_stand_px, 0.0, 1.0 + table_thickness / 2 + table_stand_height)
         # ur3_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
         _q = quat_from_euler_xyz(roll=torch.tensor(deg2rad(0.0), device=self.device),
                                  pitch=torch.tensor(deg2rad(0.0), device=self.device),
@@ -715,9 +720,9 @@ class DreamCatchUR3(VecTask):
 
         # _drive = torch.where(u_gripper >= 0.0, 0.8, 0.0)
         self._gripper_control[:, drive_id - 6] += u_gripper * grip_step
-        # self._gripper_control[:, drive_id - 6] = tensor_clamp(self._gripper_control[:, drive_id - 6],
-        #                                                       self.ur3_dof_lower_limits[drive_id],
-        #                                                       self.ur3_dof_upper_limits[drive_id])
+        self._gripper_control[:, drive_id - 6] = tensor_clamp(self._gripper_control[:, drive_id - 6],
+                                                              self.ur3_dof_lower_limits[drive_id],
+                                                              self.ur3_dof_upper_limits[drive_id])
         u_finger = self._gripper_control[:, drive_id - 6]
         # Left finger joints
         self._gripper_control[:, 6 - 6] = u_finger * 1.0    # left inner knuckle
