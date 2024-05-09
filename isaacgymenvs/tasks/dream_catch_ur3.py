@@ -716,7 +716,7 @@ class DreamCatchUR3(VecTask):
 
         # Write gripper command to appropriate tensor buffer
         # Robotiq_2F-85 max grasp speed: 150 mm/s (0.15 m/s)
-        grip_step = 0.15  # * self.dt
+        grip_step = 0.15 * self.dt
 
         # _drive = torch.where(u_gripper >= 0.0, 0.8, 0.0)
         self._gripper_control[:, drive_id - 6] += u_gripper * grip_step
@@ -807,7 +807,7 @@ def compute_franka_reward(
     # dist_reward = torch.where(d > 0.02, 1 - torch.tanh(10.0 * (d + d_lf + d_rf) / 3),
     #                           1 - torch.tanh(10.0 * (d + 5.0 * (d_lf + d_rf)) / 3))
     dist_reward = 1 - torch.tanh(10.0 * (d + d_lf + d_rf) / 3)
-    # dist_reward += torch.where(d < 0.02, 1 - torch.tanh(5.0 * (d_lf + d_rf)), 0.0)
+    # dist_reward += torch.where(d > 0.02, torch.tanh(d_ff) * 30.0, 1 - torch.tanh(d_ff) * 30.0)
 
     # reward for lifting cubeA
     cubeA_height = states["cubeA_pos"][:, 2] - reward_settings["table_height"]

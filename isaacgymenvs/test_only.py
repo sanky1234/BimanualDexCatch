@@ -221,10 +221,10 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     # Test Config
     cfg.test = True
-    folder = 'DreamCatchUR3_07-01-15-43'
-    path = '/home/testbed/Project/DreamCatch/isaacgymenvs/runs/' + folder + '/nn'
-    cfg.checkpoint = '/home/testbed/Project/DreamCatch/isaacgymenvs/runs/' + \
-                     folder + '/nn/' + find_latest_last_element(os.listdir(path))
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    folder = 'DreamCatchUR3_09-17-56-24'
+    path = current_dir + '/runs/' + folder + '/nn'
+    cfg.checkpoint = current_dir + '/runs/' + folder + '/nn/' + find_latest_last_element(os.listdir(path))
     cfg.task.env.numEnvs = 64
     cfg.headless = False
     runner.run({
