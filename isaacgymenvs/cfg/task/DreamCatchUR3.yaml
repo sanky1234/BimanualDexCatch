@@ -17,7 +17,7 @@ env:
   startRotationNoise: 0.785
   ur3PositionNoise: 0.0
   ur3RotationNoise: 0.0
-  ur3DofNoise: 0.25
+  ur3DofNoise: 0.02
 
   aggregateMode: 3
 

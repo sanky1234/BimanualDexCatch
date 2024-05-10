@@ -29,10 +29,11 @@ import time
 
 import numpy as np
 import os
-import torch
 
 from isaacgym import gymtorch
 from isaacgym import gymapi
+
+import torch
 
 from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp, quat_from_euler_xyz, quat_apply
 from isaacgymenvs.tasks.base.vec_task import VecTask
@@ -158,7 +159,7 @@ class DreamCatchUR3(VecTask):
 
         # OSC Gains
         nj = 6   # actual # of joints
-        self.kp = to_torch([100.] * 6, device=self.device)
+        self.kp = to_torch([150.] * 6, device=self.device)
         self.kd = 2 * torch.sqrt(self.kp)
         self.kp_null = to_torch([10.] * nj, device=self.device)
         self.kd_null = 2 * torch.sqrt(self.kp_null)
@@ -211,8 +212,8 @@ class DreamCatchUR3(VecTask):
         asset_options.use_mesh_materials = True
         ur3_asset = self.gym.load_asset(self.sim, asset_root, ur3_asset_file, asset_options)
 
-        ur3_dof_stiffness = to_torch([0, 0, 0, 0, 0, 0, 1000000., 1000000., 1000000., 1000000., 1000000., 1000000.], dtype=torch.float, device=self.device)
-        ur3_dof_damping = to_torch([0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50], dtype=torch.float, device=self.device)
+        ur3_dof_stiffness = to_torch([0, 0, 0, 0, 0, 0, 1e9, 1e9, 1e9, 1e9, 1e9, 1e9], dtype=torch.float, device=self.device)
+        ur3_dof_damping = to_torch([0, 0, 0, 0, 0, 0, 1e2, 1e2, 1e2, 1e2, 1e2, 1e2], dtype=torch.float, device=self.device)
 
         # Create table asset
         table_pos = [0.0, 0.0, 1.0]
@@ -277,6 +278,9 @@ class DreamCatchUR3(VecTask):
         self.ur3_dof_speed_scales[[6, 7, 8, 9, 10, 11]] = 0.1
         ur3_dof_props['effort'][6:12] = 200
         # ur3_dof_props['effort'][8] = 200
+
+        # Control gripper
+        self.drive_id = 7  # actuator joint ID
 
         # Define start pose for franka
         ur3_start_pose = gymapi.Transform()
@@ -482,6 +486,8 @@ class DreamCatchUR3(VecTask):
         self.gym.refresh_jacobian_tensors(self.sim)
         self.gym.refresh_mass_matrix_tensors(self.sim)
 
+        self.sync_robotiq_gripper_pos(env_ids=self.get_all_env_ids(), instant_update=True)
+
         # Refresh states
         self._update_states()
 
@@ -490,15 +496,24 @@ class DreamCatchUR3(VecTask):
 
     def sync_robotiq_gripper_pos(self, env_ids, instant_update=False):
         # Left joints
-        actuator = self._q[env_ids, 7]
-        self._q[env_ids, 6] = actuator * 1.0
-        self._q[env_ids, 7] = actuator * 1.0    # <revolute>
-        self._q[env_ids, 8] = actuator * -1.0
+        dof_pos = self._q[env_ids, self.drive_id]
+        self._q[env_ids, 6] = dof_pos * 1.0
+        self._q[env_ids, 7] = dof_pos * 1.0    # <revolute>
+        self._q[env_ids, 8] = dof_pos * -1.0
 
         # Right joints
-        self._q[env_ids, 9] = actuator * -1.0
-        self._q[env_ids, 10] = actuator * -1.0  # <revolute>
-        self._q[env_ids, 11] = actuator * 1.0
+        self._q[env_ids, 9] = dof_pos * -1.0
+        self._q[env_ids, 10] = dof_pos * -1.0  # <revolute>
+        self._q[env_ids, 11] = dof_pos * 1.0
+
+        dof_vel = self._qd[env_ids, self.drive_id]
+        self._qd[env_ids, 6] = dof_vel * 1.0
+        self._qd[env_ids, 7] = dof_vel * 1.0
+        self._qd[env_ids, 8] = dof_vel * -1.0
+
+        self._qd[env_ids, 9] = dof_vel * -1.0
+        self._qd[env_ids, 10] = dof_vel * -1.0
+        self._qd[env_ids, 11] = dof_vel * 1.0
 
         if instant_update:
             # multi_env_ids_int32 = self._global_indices[env_ids, 0].flatten()
@@ -711,19 +726,16 @@ class DreamCatchUR3(VecTask):
             u_arm = self._compute_osc_torques(dpose=u_arm)
         self._arm_control[:, :] = u_arm
 
-        # Control gripper
-        drive_id = 7  # actuator joint ID
-
         # Write gripper command to appropriate tensor buffer
         # Robotiq_2F-85 max grasp speed: 150 mm/s (0.15 m/s)
         grip_step = 0.15 * self.dt
 
         # _drive = torch.where(u_gripper >= 0.0, 0.8, 0.0)
-        self._gripper_control[:, drive_id - 6] += u_gripper * grip_step
-        self._gripper_control[:, drive_id - 6] = tensor_clamp(self._gripper_control[:, drive_id - 6],
-                                                              self.ur3_dof_lower_limits[drive_id],
-                                                              self.ur3_dof_upper_limits[drive_id])
-        u_finger = self._gripper_control[:, drive_id - 6]
+        self._gripper_control[:, self.drive_id - 6] += u_gripper * grip_step
+        self._gripper_control[:, self.drive_id - 6] = tensor_clamp(self._gripper_control[:, self.drive_id - 6],
+                                                              self.ur3_dof_lower_limits[self.drive_id],
+                                                              self.ur3_dof_upper_limits[self.drive_id])
+        u_finger = self._gripper_control[:, self.drive_id - 6]
         # Left finger joints
         self._gripper_control[:, 6 - 6] = u_finger * 1.0    # left inner knuckle
         self._gripper_control[:, 7 - 6] = u_finger * 1.0    # left knuckle <revolute>
@@ -736,7 +748,7 @@ class DreamCatchUR3(VecTask):
 
         # Deploy actions
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self._pos_control))
-        self.sync_robotiq_gripper_pos(env_ids=self.get_all_env_ids(), instant_update=True)
+        # self.sync_robotiq_gripper_pos(env_ids=self.get_all_env_ids(), instant_update=True)
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
     def post_physics_step(self):
