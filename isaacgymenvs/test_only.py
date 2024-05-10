@@ -209,21 +209,26 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     import re
 
-    def find_latest_last_element(file_list):
-        last_files = [file for file in file_list if file.startswith('last')]
+    def find_latest_last_element(path, best=False):
+        if best:
+            return 'DreamCatchUR3.pth'
 
+        # Filter files starting with 'last' in the given directory
+        last_files = [file for file in os.listdir(path) if file.startswith('last')]
+
+        # Extract the highest episode number using a lambda function
         def extract_episode_number(filename):
             match = re.search(r'ep_(\d+)', filename)
             return int(match.group(1)) if match else -1
 
-        latest_file = max(last_files, key=extract_episode_number)
-        return latest_file
+        # Find the file with the highest episode number or return None if no matches
+        return max(last_files, key=extract_episode_number, default=None)
 
     # Test Config
     cfg.test = True
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    folder = 'DreamCatchUR3_10-19-36-05'
-    cfg.checkpoint = current_dir + '/runs/' + folder + '/nn/DreamCatchUR3.pth'  # best checkpoint
+    folder = 'DreamCatchUR3_10-23-39-09'
+    path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
+    cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64
     cfg.headless = False
     runner.run({

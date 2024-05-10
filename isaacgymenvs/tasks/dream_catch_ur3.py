@@ -150,7 +150,7 @@ class DreamCatchUR3(VecTask):
         # Forward: deg2rad(0.0), deg2rad(-90.0), deg2rad(-110.0), deg2rad(-160.0), deg2rad(-90.0), deg2rad(0.0)
         # Downward: deg2rad(0.0), deg2rad(-120.0), deg2rad(-114.0), deg2rad(-36.0), deg2rad(80.0), deg2rad(0.0)
         self.ur3_default_dof_pos = to_torch(
-            self.default_pose["downward"] +
+            self.default_pose["forward"] +
             [deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)], device=self.device
         )
 
@@ -612,6 +612,9 @@ class DreamCatchUR3(VecTask):
         sampled_cube_state[:, :2] = centered_cube_xy_state.unsqueeze(0) + \
                                     2.0 * self.start_position_noise * (torch.rand(num_resets, 2, device=self.device) - 0.5)
 
+        sampled_cube_state[:, 2] = torch.tensor([1.5], device=self.device) + \
+                                   2.0 * self.start_position_noise * (torch.rand(num_resets, device=self.device) - 0.5)
+
         # Sample rotation value
         if self.start_rotation_noise > 0:
             aa_rot = torch.zeros(num_resets, 3, device=self.device)
@@ -669,7 +672,7 @@ class DreamCatchUR3(VecTask):
 
         # Write gripper command to appropriate tensor buffer
         # Robotiq_2F-85 max grasp speed: 150 mm/s (0.15 m/s)
-        grip_step = 0.15 * self.dt
+        grip_step = 0.3 * self.dt
 
         # _drive = torch.where(u_gripper >= 0.0, 0.8, 0.0)
         self._gripper_control[:, self.drive_id - 6] += u_gripper * grip_step
@@ -766,7 +769,7 @@ def compute_franka_reward(
 
     # Compute resets
     # drop_reset = (states["cubeA_pos"][:, 2] < -0.05) | (states["cubeB_pos"][:, 2] < -0.05)
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1),
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (cubeA_height < cubeA_size / 2 + 1e-2),
                             torch.ones_like(reset_buf), reset_buf)
 
     return rewards, reset_buf
