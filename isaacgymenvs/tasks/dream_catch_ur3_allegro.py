@@ -274,11 +274,7 @@ class DreamCatchUR3Allegro(VecTask):
         self._ur3_effort_limits = to_torch(self._ur3_effort_limits, device=self.device)
         self.ur3_dof_speed_scales = torch.ones_like(self.ur3_dof_lower_limits)
         self.ur3_dof_speed_scales[[6, 7, 8, 9, 10, 11]] = 0.1
-        ur3_dof_props['effort'][6:12] = 200
-        # ur3_dof_props['effort'][8] = 200
-
-        # Control gripper
-        self.drive_id = 7  # actuator joint ID
+        # ur3_dof_props['effort'][6:12] = 200
 
         # Define start pose for franka
         ur3_start_pose = gymapi.Transform()
@@ -457,7 +453,7 @@ class DreamCatchUR3Allegro(VecTask):
 
         # Initialize control
         self._arm_control = self._effort_control[:, :6]
-        self._finger_control = self._pos_control[:, 6:]
+        self._finger_control = self._effort_control[:, 6:]
 
         # Initialize indices
         self._global_indices = torch.arange(self.num_envs * 4, dtype=torch.int32,
@@ -673,7 +669,7 @@ class DreamCatchUR3Allegro(VecTask):
         self._finger_control[:, :] = u_finger
 
         # Deploy actions
-        self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self._pos_control))
+        # self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self._pos_control))
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
     def post_physics_step(self):
