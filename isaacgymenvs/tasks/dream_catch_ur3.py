@@ -105,7 +105,7 @@ class DreamCatchUR3(VecTask):
 
         # dimensions
         # obs include: cubeA_pose (7) + eef_pose (7) + q_gripper (1)
-        self.cfg["env"]["numObservations"] = 15 if self.control_type == "osc" else 15
+        self.cfg["env"]["numObservations"] = 15 if self.control_type == "osc" else 14
         # actions include: delta EEF if OSC (6) or joint torques (6) + bool gripper (6)
         self.cfg["env"]["numActions"] = 7 if self.control_type == "osc" else 7
 
@@ -164,7 +164,7 @@ class DreamCatchUR3(VecTask):
 
         # Set control limits
         self.cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
-        self.control_type == "osc" else self._ur3_effort_limits[:7].unsqueeze(0)
+        self.control_type == "osc" else self._ur3_effort_limits[:6].unsqueeze(0)
 
         # Reset all environments
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
@@ -288,6 +288,9 @@ class DreamCatchUR3(VecTask):
         table_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
         self._table_surface_pos = np.array(table_pos) + np.array([0, 0, table_thickness / 2])
         self.reward_settings["table_height"] = self._table_surface_pos[2]
+
+        # Define start pose for throwing
+        self._throw_start_pos = np.array(table_pos) + np.array([table_length / 2, 0, table_thickness / 2])
 
         # Define start pose for table stand
         table_stand_start_pose = gymapi.Transform()
@@ -510,8 +513,12 @@ class DreamCatchUR3(VecTask):
 
     def compute_observations(self):
         self._refresh()
-        obs = ["cubeA_quat", "cubeA_pos", "eef_pos", "eef_quat"]
-        obs += ["q_gripper"] if self.control_type == "osc" else ["q"]
+        if self.control_type == "osc":
+            obs = ["cubeA_quat", "cubeA_pos", "eef_pos", "eef_quat"]
+        else:
+            obs = ["cubeA_quat", "cubeA_pos", "q"]
+        obs += ["q_gripper"]
+
         self.obs_buf = torch.cat([self.states[ob] for ob in obs], dim=-1)
 
         maxs = {ob: torch.max(self.states[ob]).item() for ob in obs}
@@ -602,15 +609,20 @@ class DreamCatchUR3(VecTask):
             raise ValueError(f"Invalid cube specified, options are 'A' and 'B'; got: {cube}")
 
         # Sampling is "centered" around middle of table
-        centered_cube_xy_state = torch.tensor(self._table_surface_pos[:2], device=self.device, dtype=torch.float32)
+        # centered_cube_xy_state = torch.tensor(self._table_surface_pos[:2], device=self.device, dtype=torch.float32)
+        biased_cube_xy_state = torch.tensor(self._throw_start_pos[:2], device=self.device, dtype=torch.float32)
 
         # Set z value, which is fixed height
         sampled_cube_state[:, 2] = self._table_surface_pos[2] + cube_heights.squeeze(-1)[env_ids] / 2
 
         # Initialize rotation, which is no rotation (quat w = 1)
         sampled_cube_state[:, 6] = 1.0
-        sampled_cube_state[:, :2] = centered_cube_xy_state.unsqueeze(0) + \
-                                    2.0 * self.start_position_noise * (torch.rand(num_resets, 2, device=self.device) - 0.5)
+        # sampled_cube_state[:, :2] = biased_cube_xy_state.unsqueeze(0) + \
+        #                             2.0 * self.start_position_noise * (torch.rand(num_resets, 2, device=self.device) - 0.5)
+        sampled_cube_state[:, :2] = biased_cube_xy_state.unsqueeze(0) + torch.cat([
+            0.5 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5),
+            2.0 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5)
+        ], dim=-1)
 
         sampled_cube_state[:, 2] = torch.tensor([1.5], device=self.device) + \
                                    2.0 * self.start_position_noise * (torch.rand(num_resets, device=self.device) - 0.5)
@@ -623,6 +635,11 @@ class DreamCatchUR3(VecTask):
 
         # Lastly, set these sampled values as the new init state
         this_cube_state_all[env_ids, :] = sampled_cube_state
+
+        # linear/angular velocity randomization, m/s, radian/s
+        this_cube_state_all[env_ids, 7:10] = 1.0 * torch.tensor([5.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        this_cube_state_all[env_ids, 7] = -torch.abs(this_cube_state_all[env_ids, 7])
+        this_cube_state_all[env_ids, 10:] = 1.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
 
     def _compute_osc_torques(self, dpose):
         d = 6   # actual joint dof
@@ -692,13 +709,10 @@ class DreamCatchUR3(VecTask):
 
         # Deploy actions
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self._pos_control))
-        # self.sync_robotiq_gripper_pos(env_ids=self.get_all_env_ids(), instant_update=True)
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
     def post_physics_step(self):
         self.progress_buf += 1
-
-        # self.sync_robotiq_gripper_pos(env_ids=self.get_all_env_ids(), instant_update=True)
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(env_ids) > 0:
@@ -758,6 +772,7 @@ def compute_franka_reward(
     # dist_reward = torch.where(d > 0.02, 1 - torch.tanh(10.0 * (d + d_lf + d_rf) / 3),
     #                           1 - torch.tanh(10.0 * (d + 5.0 * (d_lf + d_rf)) / 3))
     dist_reward = 1 - torch.tanh(10.0 * (d + d_lf + d_rf) / 3)
+    dist_reward += torch.where(d < 0.01, 1.0, 0.0)  # reward bonus
     # dist_reward += torch.where(d > 0.02, torch.tanh(d_ff) * 30.0, 1 - torch.tanh(d_ff) * 30.0)
 
     # reward for lifting cubeA

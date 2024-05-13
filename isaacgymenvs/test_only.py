@@ -226,7 +226,7 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     # Test Config
     cfg.test = True
-    folder = 'DreamCatchUR3_10-23-39-09'
+    folder = 'DreamCatchUR3_11-15-17-33'
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64
