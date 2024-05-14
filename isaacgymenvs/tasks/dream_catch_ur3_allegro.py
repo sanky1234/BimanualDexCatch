@@ -375,7 +375,7 @@ class DreamCatchUR3Allegro(VecTask):
         self.handles = {
             # UR3
             "hand": self.gym.find_actor_rigid_body_handle(env_ptr, ur3_handle, "tool0"),
-            "grip_site": self.gym.find_actor_rigid_body_handle(env_ptr, ur3_handle, "ur3e_grip_site"),
+            "grip_site": self.gym.find_actor_rigid_body_handle(env_ptr, ur3_handle, "allegro_grip_site"),
             # Cubes
             "cubeA_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cubeA_id, "box"),
         }
@@ -392,7 +392,7 @@ class DreamCatchUR3Allegro(VecTask):
         self._rigid_body_state = gymtorch.wrap_tensor(_rigid_body_state_tensor).view(self.num_envs, -1, 13)
         self._q = self._dof_state[..., 0]
         self._qd = self._dof_state[..., 1]
-        self._eef_state = self._rigid_body_state[:, self.handles["hand"], :]   # TODO, grip_site
+        self._eef_state = self._rigid_body_state[:, self.handles["grip_site"], :]   # TODO, grip_site
         # self._grip_state = self._rigid_body_state[:, self.handles["grip_site"], :]
         _jacobian = self.gym.acquire_jacobian_tensor(self.sim, "ur3")
         jacobian = gymtorch.wrap_tensor(_jacobian)
@@ -690,15 +690,12 @@ class DreamCatchUR3Allegro(VecTask):
             # Grab relevant states to visualize
             eef_pos = self.states["eef_pos"]
             eef_rot = self.states["eef_quat"]
-            lf_pos = self.states["eef_lf_pos"]
-            lf_rot = self.states["eef_lf_quat"]
-            rf_pos = self.states["eef_rf_pos"]
-            rf_quat = self.states["eef_rf_quat"]
+
             cubeA_pos = self.states["cubeA_pos"]
             cubeA_rot = self.states["cubeA_quat"]
 
-            pos_list = [lf_pos, rf_pos, eef_pos]
-            rot_list = [lf_rot, rf_quat, eef_rot]
+            pos_list = [eef_pos]
+            rot_list = [eef_rot]
 
             # Plot visualizations
             for i in range(self.num_envs):

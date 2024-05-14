@@ -543,6 +543,16 @@
   <material name="light_black">
     <color rgba="0.3 0.3 0.3 1.0"/>
   </material>
+  <!-- ############################ -->
+  <!-- added by twkim -->
+  <link name="allegro_grip_site"/>  <!-- dummy link -->
+  <joint name="allegro_grip_tool0" type="fixed">
+    <!-- default toolframe - X+ left, Y+ up, Z+ front -->
+    <origin rpy="0 0 0" xyz="0 0 0.0625"/>
+    <parent link="tool0"/>
+    <child link="allegro_grip_site"/>
+  </joint>
+  <!-- ############################ -->
   <!-- Adaptor between Allegro Hand and UR robot' tool -->
   <joint name="adaptor_joint" type="fixed">
     <parent link="tool0"/>
