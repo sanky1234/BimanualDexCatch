@@ -210,8 +210,19 @@ def launch_rlg_hydra(cfg: DictConfig):
     import re
 
     def find_latest_last_element(path, best=False):
+        def extract_project_name(_path):
+            # Extract the path between 'runs' and 'nn'.
+            project_name_with_numbers = re.search(r'runs/(.*?)/nn', _path)
+            if project_name_with_numbers:
+                project_name_with_numbers = project_name_with_numbers.group(1)
+
+                # Remove numbers and anything following them that start with '_' from the project name.
+                project_name = re.sub(r'_(\d+).*$', '', project_name_with_numbers)
+                return project_name + '.pth'
+            return None
+
         if best:
-            return 'DreamCatchUR3.pth'
+            return extract_project_name(path)
 
         # Filter files starting with 'last' in the given directory
         last_files = [file for file in os.listdir(path) if file.startswith('last')]
@@ -226,9 +237,9 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     # Test Config
     cfg.test = True
-    folder = 'DreamCatchUR3Allegro_13-21-27-59'
+    folder = 'DreamCatchUR3Allegro_14-19-25-08'
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
-    cfg.checkpoint = path + find_latest_last_element(path=path, best=False)
+    cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64
     cfg.headless = False
     runner.run({

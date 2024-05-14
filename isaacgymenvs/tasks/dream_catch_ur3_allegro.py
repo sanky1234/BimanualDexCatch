@@ -489,7 +489,7 @@ class DreamCatchUR3Allegro(VecTask):
 
     def compute_reward(self, actions):
         self.rew_buf[:], self.reset_buf[:] = compute_franka_reward(
-            self.reset_buf, self.progress_buf, self.actions, self.states, self.reward_settings, self.max_episode_length
+            self.reset_buf, self.progress_buf, self.actions, self._qd, self.states, self.reward_settings, self.max_episode_length
         )
 
     def compute_observations(self):
@@ -716,9 +716,9 @@ class DreamCatchUR3Allegro(VecTask):
 
 @torch.jit.script
 def compute_franka_reward(
-    reset_buf, progress_buf, actions, states, reward_settings, max_episode_length
+    reset_buf, progress_buf, actions, _qd, states, reward_settings, max_episode_length
 ):
-    # type: (Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor]
+    # type: (Tensor, Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor]
 
     cubeA_size = states["cubeA_size"]
 
@@ -734,7 +734,11 @@ def compute_franka_reward(
     cubeA_lifted = (cubeA_height - cubeA_size) > 0.04
     lift_reward = cubeA_lifted
 
-    rewards = reward_settings["r_dist_scale"] * dist_reward + reward_settings["r_lift_scale"] * lift_reward
+    ur_actions_penalty = torch.sum(torch.abs(_qd[..., 0:6]), dim=-1) * 0.01
+    allegro_actions_penalty = torch.sum(torch.abs(_qd[..., 7:]), dim=-1) * 0.01
+    action_penalty = -1 * ur_actions_penalty - 1 * allegro_actions_penalty
+
+    rewards = reward_settings["r_dist_scale"] * dist_reward + reward_settings["r_lift_scale"] * lift_reward + action_penalty
 
     # Compute resets
     # drop_reset = (states["cubeA_pos"][:, 2] < -0.05) | (states["cubeB_pos"][:, 2] < -0.05)
