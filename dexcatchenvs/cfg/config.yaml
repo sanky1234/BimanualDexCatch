@@ -15,6 +15,10 @@ torch_deterministic: False
 # set the maximum number of learning iterations to train for. overrides default per-environment setting
 max_iterations: 10000
 
+## Custom parameters for MARL
+# Custom algorithms including multi-agent RL
+algo: "mappo"   # MARL: ["mappo", "happo", "hatrpo", "maddpg", "ippo"], SRL: ["ppo", "ddpg", "sac", "td3", "trpo"]
+
 ## Device config
 #  'physx' or 'flex'
 physics_engine: 'physx'
@@ -47,7 +51,7 @@ wandb_name: ${train.params.config.name}
 wandb_entity: ''
 wandb_project: 'isaacgymenvs'
 wandb_tags: []
-wandb_logcode_dir: '' 
+wandb_logcode_dir: ''
 
 capture_video: False
 capture_video_freq: 1464
@@ -59,9 +63,8 @@ headless: True
 
 # set default task and default training config based on task
 defaults:
-  - task: DreamCatchUR3
+  - task: DexCatchUR3Allegro
   - train: ${task}PPO
-  - pbt: no_pbt
   - override hydra/job_logging: disabled
   - _self_
 
