@@ -1,5 +1,5 @@
 # used to create the object
-name: DexCatchUR3Allegro
+name: BimanualDexCatchUR3Allegro
 
 physics_engine: ${..physics_engine}
 

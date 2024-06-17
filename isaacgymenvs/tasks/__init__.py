@@ -48,6 +48,7 @@ from .dextreme.allegro_hand_dextreme import AllegroHandDextremeManualDR, Allegro
 from .trifinger import Trifinger
 from .dream_catch_ur3 import DreamCatchUR3
 from .dream_catch_ur3_allegro import DreamCatchUR3Allegro
+from .bimanual_dex_catch_ur3_allegro import BimanualDexCatchUR3Allegro
 
 from .allegro_kuka.allegro_kuka_reorientation import AllegroKukaReorientation
 from .allegro_kuka.allegro_kuka_regrasping import AllegroKukaRegrasping
@@ -115,4 +116,5 @@ isaacgym_task_map = {
     "Trifinger": Trifinger,
     "DreamCatchUR3": DreamCatchUR3,
     "DreamCatchUR3Allegro": DreamCatchUR3Allegro,
+    "BimanualDexCatchUR3Allegro": BimanualDexCatchUR3Allegro,
 }
