@@ -534,12 +534,14 @@ class BimanualDexCatchUR3Allegro(VecTask):
         })
 
         # Initialize actions
-        self._l_pos_control = torch.zeros((self.num_envs, self.num_dofs // len(self.allegro_ur3_assets)), dtype=torch.float, device=self.device)
+        self._pos_control = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device)
+        self._effort_control = torch.zeros_like(self._pos_control)
+
+        half = self.num_dofs // len(self.allegro_ur3_assets)
+        self._l_pos_control = self._pos_control[:, :half]
         self._l_effort_control = torch.zeros_like(self._l_pos_control)
-        self._r_pos_control = torch.zeros((self.num_envs, self.num_dofs // len(self.allegro_ur3_assets)), dtype=torch.float, device=self.device)
+        self._r_pos_control = self._pos_control[:, half:]
         self._r_effort_control = torch.zeros_like(self._r_pos_control)
-        self._pos_control = torch.concat((self._l_pos_control, self._r_pos_control), dim=-1)
-        self._effort_control = torch.concat((self._l_effort_control, self._r_effort_control), dim=-1)
 
         # Initialize control
         self._l_arm_control = self._l_effort_control[:, :6]
@@ -625,21 +627,21 @@ class BimanualDexCatchUR3Allegro(VecTask):
             self.ur3_dof_noise * 2.0 * (reset_noise - 0.5),
             torch.cat(self._dof_lower_limits), torch.cat(self._dof_upper_limits))
 
-        # # Overwrite gripper init pos (no noise since these are always position controlled)
-        # pos[:, 6:22] = ur3_default_dof_pos[6:22]
-        # pos[:, 22+6:] = ur3_default_dof_pos[22+6:]
+        # Overwrite gripper init pos (no noise since these are always position controlled)
+        pos[:, 6:22] = ur3_default_dof_pos[6:22]
+        pos[:, 22+6:] = ur3_default_dof_pos[22+6:]
 
         # Reset the internal obs accordingly
-        self._l_q[env_ids, :] = pos[env_ids, :22]
+        self._l_q[env_ids, :] = pos[..., :22]
         self._l_qd[env_ids, :] = torch.zeros_like(self._l_qd[env_ids])
 
-        self._r_q[env_ids, :] = pos[env_ids, 22:]
+        self._r_q[env_ids, :] = pos[..., 22:]
         self._r_qd[env_ids, :] = torch.zeros_like(self._r_qd[env_ids])
 
         # Set any position control to the current position, and any vel / effort control to be 0
         # NOTE: Task takes care of actually propagating these controls in sim using the SimActions API
-        self._pos_control[env_ids] = pos[env_ids]
-        self._effort_control[env_ids] = torch.zeros_like(pos[env_ids])
+        self._pos_control[env_ids] = pos
+        self._effort_control[env_ids] = torch.zeros_like(pos)
 
         self._l_pos_control[env_ids, :] = self._pos_control[env_ids, :22]    # pos[env_ids, :22]
         self._l_effort_control[env_ids, :] = torch.zeros_like(self._l_pos_control[env_ids])
