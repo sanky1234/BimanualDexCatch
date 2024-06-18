@@ -31,7 +31,8 @@ env:
 
   asset:
     assetRoot: "../../assets"
-    assetFileNameUR3: "urdf/ur_with_allegro_hand_description/urdf/ur3_allegro_right_hand.urdf"
+    assetFileNameLeftAllegroUR3: "urdf/ur_with_allegro_hand_description/urdf/ur3_allegro_left_hand.urdf"
+    assetFileNameRightAllegroUR3: "urdf/ur_with_allegro_hand_description/urdf/ur3_allegro_right_hand.urdf"
 
   # set to True if you use camera sensors in the environment
   enableCameraSensors: False
