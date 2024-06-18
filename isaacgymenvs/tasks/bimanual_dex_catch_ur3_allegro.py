@@ -128,6 +128,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._contact_forces = None     # Contact forces in sim
         self._pos_control = None        # position actions
         self._effort_control = None     # Torque actions
+        self._q = None                  # Joint position
+        self._qd = None                 # Joint velocities
 
         self._ur3_effort_limits = None        # Actuator effort limits for franka
         self._global_indices = None         # Unique indices corresponding to all envs in flattened array
@@ -230,7 +232,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         if "asset" in self.cfg["env"]:
             asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), self.cfg["env"]["asset"].get("assetRoot", asset_root))
-            left_allegro_ur3_asset_file = self.cfg["env"]["asset"].get("assetFileNameLeftAllegroUR3", right_allegro_ur3_asset_file)
+            left_allegro_ur3_asset_file = self.cfg["env"]["asset"].get("assetFileNameLeftAllegroUR3", left_allegro_ur3_asset_file)
             right_allegro_ur3_asset_file = self.cfg["env"]["asset"].get("assetFileNameRightAllegroUR3", right_allegro_ur3_asset_file)
 
         # load ur3 asset
@@ -265,7 +267,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         table_stand_breadth = 0.13    # y-direction
         table_stand_length = 0.13   # x-direction
         table_stand_px = -table_breadth / 2 + table_stand_length * 0.5
-        table_stand_pos = [table_stand_px, 0.0, 1.0 + table_thickness / 2 + table_stand_height / 2]
+        table_stand_py = 0.2 / 2.0     # (130mm x 130mm) 0 for single arm case
+        table_stand_pos = [table_stand_px, table_stand_py, 1.0 + table_thickness / 2 + table_stand_height / 2]
         table_stand_opts = gymapi.AssetOptions()
         table_stand_opts.fix_base_link = True
         table_stand_asset = self.gym.create_box(self.sim, *[table_stand_breadth, table_stand_length, table_stand_height], table_opts)
@@ -323,9 +326,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
             self.bi_ur3_dof_props.append(ur3_dof_props)
             # Convert lists to tensors and assign to _dof_limits
-            self._dof_lower_limits[idx] = torch.tensor(lower_limits, device=self.device)
-            self._dof_upper_limits[idx] = torch.tensor(upper_limits, device=self.device)
-            self._dof_effort_limits[idx] = torch.tensor(effort_limits, device=self.device)
+            self._dof_lower_limits[idx] = to_torch(lower_limits, device=self.device)
+            self._dof_upper_limits[idx] = to_torch(upper_limits, device=self.device)
+            self._dof_effort_limits[idx] = to_torch(effort_limits, device=self.device)
 
         # Assign the converted tensors back to the original variables
         self.left_allegro_ur3_dof_lower_limits, self.right_allegro_ur3_dof_lower_limits = self._dof_lower_limits
@@ -342,14 +345,17 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # Define start pose for franka
         left_ur3_start_pose = gymapi.Transform()
         right_ur3_start_pose = gymapi.Transform()
-        left_ur3_start_pose.p = gymapi.Vec3(table_stand_px, 0.0, 1.0 + table_thickness / 2 + table_stand_height)
-        right_ur3_start_pose.p = gymapi.Vec3(table_stand_px, 0.0, 1.0 + table_thickness / 2 + table_stand_height)
+        left_ur3_start_pose.p = gymapi.Vec3(table_stand_px, table_stand_py, 1.0 + table_thickness / 2 + table_stand_height)
+        right_ur3_start_pose.p = gymapi.Vec3(table_stand_px, -table_stand_py, 1.0 + table_thickness / 2 + table_stand_height)
         # ur3_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
-        _q = quat_from_euler_xyz(roll=torch.tensor(deg2rad(0.0), device=self.device),
-                                 pitch=torch.tensor(deg2rad(0.0), device=self.device),
-                                 yaw=torch.tensor(deg2rad(180.0), device=self.device))
-        # left_ur3_start_pose.r = gymapi.Quat(_q[0], _q[1], _q[2], _q[3])     # TODO
-        right_ur3_start_pose.r = gymapi.Quat(_q[0], _q[1], _q[2], _q[3])
+        _lq = quat_from_euler_xyz(roll=torch.tensor(deg2rad(0.0), device=self.device),
+                                  pitch=torch.tensor(deg2rad(0.0), device=self.device),
+                                  yaw=torch.tensor(deg2rad(0.0), device=self.device))
+        _rq = quat_from_euler_xyz(roll=torch.tensor(deg2rad(0.0), device=self.device),
+                                  pitch=torch.tensor(deg2rad(0.0), device=self.device),
+                                  yaw=torch.tensor(deg2rad(180.0), device=self.device))
+        left_ur3_start_pose.r = gymapi.Quat(_lq[0], _lq[1], _lq[2], _lq[3])
+        right_ur3_start_pose.r = gymapi.Quat(_rq[0], _rq[1], _rq[2], _rq[3])
 
         # Define start pose for table
         table_start_pose = gymapi.Transform()
@@ -402,9 +408,12 @@ class BimanualDexCatchUR3Allegro(VecTask):
                 new_quat = axisangle2quat(rand_rot).squeeze().numpy().tolist()
                 left_ur3_start_pose.r = gymapi.Quat(*new_quat)
             left_ur3_actor = self.gym.create_actor(env_ptr, left_allegro_ur3_asset, left_ur3_start_pose, "left_ur3", i, 8, 0) # TODO, default: i,0,0
-            right_ur3_actor = self.gym.create_actor(env_ptr, left_allegro_ur3_asset, left_ur3_start_pose, "right_ur3", i, 8, 0)
             self.gym.set_actor_dof_properties(env_ptr, left_ur3_actor, self.bi_ur3_dof_props[0])
+            # print("left arm index: ", self.gym.get_actor_index(env_ptr, left_ur3_actor, gymapi.DOMAIN_SIM))
+
+            right_ur3_actor = self.gym.create_actor(env_ptr, right_allegro_ur3_asset, right_ur3_start_pose, "right_ur3", i, 8, 0)
             self.gym.set_actor_dof_properties(env_ptr, right_ur3_actor, self.bi_ur3_dof_props[1])
+            # print("right arm index: ", self.gym.get_actor_index(env_ptr, right_ur3_actor, gymapi.DOMAIN_SIM))
 
             if self.aggregate_mode == 2:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
@@ -439,7 +448,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # Setup sim handles
         env_ptr = self.envs[0]
         left_ur3_handle = 0
-        right_ur3_handle = 0
+        right_ur3_handle = 1
         self.handles = {
             # UR3
             "hand_left": self.gym.find_actor_rigid_body_handle(env_ptr, left_ur3_handle, "tool0"),
@@ -460,11 +469,13 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._root_state = gymtorch.wrap_tensor(_actor_root_state_tensor).view(self.num_envs, -1, 13)
         self._dof_state = gymtorch.wrap_tensor(_dof_state_tensor).view(self.num_envs, -1, 2)
         self._rigid_body_state = gymtorch.wrap_tensor(_rigid_body_state_tensor).view(self.num_envs, -1, 13)
+        self._q = self._dof_state[..., 0]
+        self._qd = self._dof_state[..., 1]
         dof_per_arm = self.num_allegro_ur3_dofs // len(self.allegro_ur3_assets)
-        self._l_q = self._dof_state[:, :dof_per_arm, 0]
-        self._l_qd = self._dof_state[:, :dof_per_arm, 1]
-        self._r_q = self._dof_state[:, dof_per_arm:, 0]
-        self._r_qd = self._dof_state[:, dof_per_arm:, 1]
+        self._l_q = self._q[:, :dof_per_arm]
+        self._l_qd = self._qd[:, :dof_per_arm]
+        self._r_q = self._q[:, dof_per_arm:]
+        self._r_qd = self._qd[:, dof_per_arm:]
         self._l_eef_state = self._rigid_body_state[:, self.handles["grip_site_left"], :]   # TODO, grip_site
         self._r_eef_state = self._rigid_body_state[:, self.handles["grip_site_right"], :]  # TODO, grip_site
         # self._grip_state = self._rigid_body_state[:, self.handles["grip_site"], :]
@@ -537,11 +548,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._pos_control = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device)
         self._effort_control = torch.zeros_like(self._pos_control)
 
-        half = self.num_dofs // len(self.allegro_ur3_assets)
-        self._l_pos_control = self._pos_control[:, :half]
-        self._l_effort_control = torch.zeros_like(self._l_pos_control)
-        self._r_pos_control = self._pos_control[:, half:]
-        self._r_effort_control = torch.zeros_like(self._r_pos_control)
+        self._l_pos_control = self._pos_control[:, :dof_per_arm]
+        self._l_effort_control = self._effort_control[:, :dof_per_arm]
+        self._r_pos_control = self._pos_control[:, dof_per_arm:]
+        self._r_effort_control = self._effort_control[:, dof_per_arm:]
 
         # Initialize control
         self._l_arm_control = self._l_effort_control[:, :6]
@@ -627,30 +637,22 @@ class BimanualDexCatchUR3Allegro(VecTask):
             self.ur3_dof_noise * 2.0 * (reset_noise - 0.5),
             torch.cat(self._dof_lower_limits), torch.cat(self._dof_upper_limits))
 
-        # Overwrite gripper init pos (no noise since these are always position controlled)
-        pos[:, 6:22] = ur3_default_dof_pos[6:22]
-        pos[:, 22+6:] = ur3_default_dof_pos[22+6:]
+        # # Overwrite gripper init pos (no noise since these are always position controlled)
+        # pos[:, 6:22] = ur3_default_dof_pos[6:22]
+        # pos[:, 22+6:] = ur3_default_dof_pos[22+6:]
 
         # Reset the internal obs accordingly
-        self._l_q[env_ids, :] = pos[..., :22]
-        self._l_qd[env_ids, :] = torch.zeros_like(self._l_qd[env_ids])
-
-        self._r_q[env_ids, :] = pos[..., 22:]
-        self._r_qd[env_ids, :] = torch.zeros_like(self._r_qd[env_ids])
+        self._q[env_ids, :] = pos
+        self._qd[env_ids, :] = torch.zeros_like(self._qd[env_ids])
 
         # Set any position control to the current position, and any vel / effort control to be 0
         # NOTE: Task takes care of actually propagating these controls in sim using the SimActions API
         self._pos_control[env_ids] = pos
         self._effort_control[env_ids] = torch.zeros_like(pos)
 
-        self._l_pos_control[env_ids, :] = self._pos_control[env_ids, :22]    # pos[env_ids, :22]
-        self._l_effort_control[env_ids, :] = torch.zeros_like(self._l_pos_control[env_ids])
-
-        self._r_pos_control[env_ids, :] = self._pos_control[env_ids, 22:]   # pos[env_ids, 22:]
-        self._r_effort_control[env_ids, :] = torch.zeros_like(self._r_pos_control[env_ids])
-
         # Deploy updates
-        multi_env_ids_int32 = self._global_indices[env_ids, 0].flatten()
+        # TODO, indexing, 0 --> left arm, 1 --> right arm
+        multi_env_ids_int32 = self._global_indices[env_ids, 0:2].flatten()
         self.gym.set_dof_position_target_tensor_indexed(self.sim,
                                                         gymtorch.unwrap_tensor(self._pos_control),
                                                         gymtorch.unwrap_tensor(multi_env_ids_int32),
@@ -780,12 +782,12 @@ class BimanualDexCatchUR3Allegro(VecTask):
             u_arm = self._compute_osc_torques(dpose=u_arm)
         self._l_arm_control[:, :] = u_arm
         self._l_finger_control[:, :] = u_finger
+        self._r_arm_control[:, :] = u_arm
+        self._r_finger_control[:, :] = u_finger
 
         # Deploy actions
         # self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self._pos_control))
-        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(torch.concat((self._l_effort_control,
-                                                                                               self._r_effort_control),
-                                                                                              dim=-1)))
+        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
     def post_physics_step(self):
         self.progress_buf += 1
