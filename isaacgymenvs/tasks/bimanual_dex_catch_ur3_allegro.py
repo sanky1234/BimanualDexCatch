@@ -34,10 +34,19 @@ from isaacgym import gymtorch
 from isaacgym import gymapi
 
 import torch
+import torch.nn.functional as F
 
 from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp, quat_from_euler_xyz, quat_apply
 from isaacgymenvs.tasks.base.vec_task import VecTask
 from isaacgymenvs.tasks.utils.general_utils import deg2rad
+
+
+def get_indices_from_dict(dictionary, keys):
+    indices = []
+    for key in keys:
+        indices.append(dictionary.get(key, "Key not found"))
+    return indices
+
 
 
 @torch.jit.script
@@ -95,6 +104,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "r_dist_scale": self.cfg["env"]["distRewardScale"],
             "r_lift_scale": self.cfg["env"]["liftRewardScale"],
             "sep_dist_scale": self.cfg["env"]["sepRewardScale"],
+            "contact_penalty_scale": self.cfg["env"]["contactPenaltyScale"],
             "act_penalty_scale": self.cfg["env"]["actionPenaltyScale"],
         }
 
@@ -150,6 +160,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._r_q = None  # Joint positions           (n_envs, n_dof)
         self._r_qd = None  # Joint velocities          (n_envs, n_dof)
 
+        self._l_contact_forces = None  # Contact forces in sim
+        self._r_contact_forces = None  # Contact forces in sim
         self._l_arm_control = None  # Tensor buffer for controlling arm
         self._l_finger_control = None  # Tensor buffer for controlling gripper
         self._l_pos_control = None  # Position actions
@@ -386,8 +398,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # compute aggregate size
         num_ur3_bodies = sum([self.gym.get_asset_rigid_body_count(asset) for asset in self.allegro_ur3_assets])
         num_ur3_shapes = sum([self.gym.get_asset_rigid_shape_count(asset) for asset in self.allegro_ur3_assets])
-        max_agg_bodies = num_ur3_bodies + 4     # 1 for table, table stand x2, cubeA
-        max_agg_shapes = num_ur3_shapes + 4     # 1 for table, table stand x2, cubeA
+        self.num_bodies = max_agg_bodies = num_ur3_bodies + 4     # 1 for table, table stand x2, cubeA
+        self.num_shapes = max_agg_shapes = num_ur3_shapes + 4     # 1 for table, table stand x2, cubeA
 
         self.ur3s = []
         self.envs = []
@@ -445,6 +457,58 @@ class BimanualDexCatchUR3Allegro(VecTask):
             self.envs.append(env_ptr)
             self.ur3s.append((left_ur3_actor, right_ur3_actor))     # save as tuple
 
+        self.allegro_ur3_body_dict = self.gym.get_actor_rigid_body_dict(env_ptr, left_ur3_actor)
+
+        # if you want to show the items of the dict, comment out the following codes
+        # sorted_dict = dict(sorted(self.allegro_ur3_body_dict.items(), key=lambda item: item[1]))
+        # for key, value in sorted_dict.items():
+        #     print(f"{key}: {value}")
+        """
+        * allegro_ur3_body_dict items
+        --------------------------------
+            world: 0    # world
+        --------------------------------
+            base_link: 1    # UR3 starts
+            base: 2
+            base_link_inertia: 3
+            shoulder_link: 4
+            upper_arm_link: 5
+            forearm_link: 6
+            wrist_1_link: 7
+            wrist_2_link: 8
+            wrist_3_link: 9
+            flange: 10
+            tool0: 11
+        --------------------------------
+            adaptor: 12     # adaptor
+        --------------------------------
+            palm_link: 13   # allegro hand starts
+            link_0: 14
+            link_1: 15
+            link_2: 16
+            link_3: 17
+            link_3_tip: 18
+            link_12: 19
+            link_13: 20
+            link_14: 21
+            link_15: 22
+            link_15_tip: 23
+            link_4: 24
+            link_5: 25
+            link_6: 26
+            link_7: 27
+            link_7_tip: 28
+            link_8: 29
+            link_9: 30
+            link_10: 31
+            link_11: 32
+            link_11_tip: 33
+            allegro_grip_site: 34
+            ft_frame: 35
+        --------------------------------
+        """
+
+
         # Setup init state buffer
         self._init_cubeA_state = torch.zeros(self.num_envs, 13, device=self.device)
 
@@ -466,6 +530,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "cubeA_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cubeA_id, "box"),
         }
 
+        bodies_to_detect_contacts = ["base_link_inertia", "shoulder_link", "upper_arm_link", "forearm_link",
+                                     "wrist_1_link", "wrist_2_link", "wrist_3_link"]
+        self.ids_for_contact = get_indices_from_dict(self.allegro_ur3_body_dict, bodies_to_detect_contacts)
+
         # Get total DOFs
         self.num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
 
@@ -473,9 +541,14 @@ class BimanualDexCatchUR3Allegro(VecTask):
         _actor_root_state_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
         _dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
         _rigid_body_state_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
+        _contact_force_tensor = self.gym.acquire_net_contact_force_tensor(self.sim)
         self._root_state = gymtorch.wrap_tensor(_actor_root_state_tensor).view(self.num_envs, -1, 13)
         self._dof_state = gymtorch.wrap_tensor(_dof_state_tensor).view(self.num_envs, -1, 2)
         self._rigid_body_state = gymtorch.wrap_tensor(_rigid_body_state_tensor).view(self.num_envs, -1, 13)
+        self._contact_forces = gymtorch.wrap_tensor(_contact_force_tensor).view(self.num_envs, self.num_bodies, 3)
+        num_bodies_per_robot = self.num_allegro_ur3_bodies // len(self.allegro_ur3_assets)
+        self._l_contact_forces = self._contact_forces[:, :num_bodies_per_robot, :]
+        self._r_contact_forces = self._contact_forces[:, num_bodies_per_robot:, :]
         self._q = self._dof_state[..., 0]
         self._qd = self._dof_state[..., 1]
         dof_per_arm = self.num_allegro_ur3_dofs // len(self.allegro_ur3_assets)
@@ -490,43 +563,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
         l_jacobian = gymtorch.wrap_tensor(_l_jacobian)
         _r_jacobian = self.gym.acquire_jacobian_tensor(self.sim, "right_ur3")
         r_jacobian = gymtorch.wrap_tensor(_r_jacobian)
-
-        '''
-        'adaptor_joint' = {int} 11
-        'base_joint' = {int} 0
-        'base_link-base_fixed_joint' = {int} 1
-        'base_link-base_link_inertia' = {int} 2
-        'elbow_joint' = {int} 5
-        'flange-tool0' = {int} 10
-        'joint_0' = {int} 13
-        'joint_1' = {int} 14
-        'joint_10' = {int} 30
-        'joint_11' = {int} 31
-        'joint_11_tip' = {int} 32
-        'joint_12' = {int} 18
-        'joint_13' = {int} 19
-        'joint_14' = {int} 20
-        'joint_15' = {int} 21
-        'joint_15_tip' = {int} 22
-        'joint_2' = {int} 15
-        'joint_3' = {int} 16
-        'joint_3_tip' = {int} 17
-        'joint_4' = {int} 23
-        'joint_5' = {int} 24
-        'joint_6' = {int} 25
-        'joint_7' = {int} 26
-        'joint_7_tip' = {int} 27
-        'joint_8' = {int} 28
-        'joint_9' = {int} 29
-        'root_to_base' = {int} 12
-        'shoulder_lift_joint' = {int} 4
-        'shoulder_pan_joint' = {int} 3
-        'wrist_1_joint' = {int} 6
-        'wrist_2_joint' = {int} 7
-        'wrist_3-flange' = {int} 9
-        'wrist_3_joint' = {int} 8
-        'wrist_3_link-ft_frame' = {int} 33
-        '''
 
         # left arm
         temp = self.gym.get_actor_joint_dict(env_ptr, left_ur3_handle)
@@ -573,6 +609,12 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
     def _update_states(self):
 
+        # print("left arm contact ", self._l_contact_forces[-1, self.ids_for_contact])
+        # print("right arm contact ", self._r_contact_forces[-1, self.ids_for_contact])
+
+        l_arm_contact_n_mag = F.normalize(self._l_contact_forces[:, self.ids_for_contact], p=2, dim=-1)
+        r_arm_contact_n_mag = F.normalize(self._r_contact_forces[:, self.ids_for_contact], p=2, dim=-1)
+
         self.states.update({
             # Left Allegro UR3
             "l_q": self._l_q[:, :6],
@@ -580,12 +622,14 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "l_eef_pos": self._l_eef_state[:, :3],
             "l_eef_quat": self._l_eef_state[:, 3:7],
             "l_eef_vel": self._l_eef_state[:, 7:],
+            "left_arm_contact_n_mag": l_arm_contact_n_mag,
             # Right Allegro UR3
             "r_q": self._r_q[:, :6],
             "r_q_finger": self._r_q[:, 6:],
             "r_eef_pos": self._r_eef_state[:, :3],
             "r_eef_quat": self._r_eef_state[:, 3:7],
             "r_eef_vel": self._r_eef_state[:, 7:],
+            "right_arm_contact_n_mag": r_arm_contact_n_mag,
             # Bimanual states
             "left_right_relative_hand_pos": self._l_eef_state[:, :3] - self._r_eef_state[:, :3],
             # Cubes
@@ -601,6 +645,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.gym.refresh_rigid_body_state_tensor(self.sim)
         self.gym.refresh_jacobian_tensors(self.sim)
         self.gym.refresh_mass_matrix_tensors(self.sim)
+        self.gym.refresh_net_contact_force_tensor(self.sim)
 
         # Refresh states
         self._update_states()
@@ -874,13 +919,18 @@ def compute_franka_reward(
     cubeA_lifted = (cubeA_height - cubeA_size) > 0.04
     lift_reward = cubeA_lifted
 
+    l_arm_contact_n_mag_mean = torch.mean(torch.norm(states["left_arm_contact_n_mag"], dim=-1), dim=-1)
+    r_arm_contact_n_mag_mean = torch.mean(torch.norm(states["right_arm_contact_n_mag"], dim=-1), dim=-1)
+    arm_contact_n_mag_mean = 0.5 * l_arm_contact_n_mag_mean + 0.5 * r_arm_contact_n_mag_mean
+
     ur_actions_penalty = (torch.sum(torch.abs(_l_qd[..., 0:6]), dim=-1) + torch.sum(torch.abs(_r_qd[..., 0:6]), dim=-1))
     allegro_actions_penalty = (torch.sum(torch.abs(_l_qd[..., 7:]), dim=-1) + torch.sum(torch.abs(_r_qd[..., 7:]), dim=-1))
-    action_penalty = -1.0 * ur_actions_penalty - 1.0 * allegro_actions_penalty
+    action_penalty = 1.0 * ur_actions_penalty + 1.0 * allegro_actions_penalty
 
-    rewards = (reward_settings["r_dist_scale"] * dist_reward + reward_settings["r_lift_scale"] * lift_reward +
-               reward_settings["sep_dist_scale"] * sep_dist_reward +
-               reward_settings["act_penalty_scale"] * action_penalty)
+    rewards = (reward_settings["r_dist_scale"] * dist_reward + reward_settings["r_lift_scale"] * lift_reward
+               + reward_settings["sep_dist_scale"] * sep_dist_reward
+               - reward_settings["contact_penalty_scale"] * arm_contact_n_mag_mean
+               - reward_settings["act_penalty_scale"] * action_penalty)
 
     # Compute resets
     # drop_reset = (states["cubeA_pos"][:, 2] < -0.05) | (states["cubeB_pos"][:, 2] < -0.05)
