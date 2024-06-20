@@ -94,8 +94,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.reward_settings = {
             "r_dist_scale": self.cfg["env"]["distRewardScale"],
             "r_lift_scale": self.cfg["env"]["liftRewardScale"],
-            "r_align_scale": self.cfg["env"]["alignRewardScale"],
-            "r_stack_scale": self.cfg["env"]["stackRewardScale"],
+            "sep_dist_scale": self.cfg["env"]["sepRewardScale"],
+            "act_penalty_scale": self.cfg["env"]["actionPenaltyScale"],
         }
 
         # Controller type
@@ -110,7 +110,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # actions if osc: delta EEF if OSC (6) + finger torques (16) = 22
         # actions if joint: joint torques (6) + finger torques (16) = 22
-        self.cfg["env"]["numActions"] = 22 if self.control_type == "osc" else 22
+        self.cfg["env"]["numActions"] = 22 if self.control_type == "osc" else 44
 
         # Values to be filled in at runtime
         self.states = {}                        # will be dict filled with relevant states to use for reward calculation
@@ -198,8 +198,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Set control limits,
         # TODO!!!
-        self.cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
+        self.l_cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
         self.control_type == "osc" else self.left_allegro_ur3_effort_limits[:6].unsqueeze(0)
+        self.r_cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
+            self.control_type == "osc" else self.right_allegro_ur3_effort_limits[:6].unsqueeze(0)
 
         # Reset all environments
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
@@ -212,8 +214,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.sim_params.gravity.x = 0
         self.sim_params.gravity.y = 0
         self.sim_params.gravity.z = -9.81
-        self.sim = super().create_sim(
-            self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
+        self.sim = super().create_sim(self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
         self._create_ground_plane()
         self._create_envs(self.num_envs, self.cfg["env"]['envSpacing'], int(np.sqrt(self.num_envs)))
 
@@ -268,7 +269,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         table_stand_length = 0.13   # x-direction
         table_stand_px = -table_breadth / 2 + table_stand_length * 0.5
         table_stand_py = 0.2 / 2.0     # (130mm x 130mm) 0 for single arm case
-        table_stand_pos = [table_stand_px, table_stand_py, 1.0 + table_thickness / 2 + table_stand_height / 2]
+        l_table_stand_pos = [table_stand_px, table_stand_py, 1.0 + table_thickness / 2 + table_stand_height / 2]
+        r_table_stand_pos = [table_stand_px, -table_stand_py, 1.0 + table_thickness / 2 + table_stand_height / 2]
         table_stand_opts = gymapi.AssetOptions()
         table_stand_opts.fix_base_link = True
         table_stand_asset = self.gym.create_box(self.sim, *[table_stand_breadth, table_stand_length, table_stand_height], table_opts)
@@ -368,9 +370,13 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._throw_start_pos = np.array(table_pos) + np.array([table_length / 2, 0, table_thickness / 2])
 
         # Define start pose for table stand
-        table_stand_start_pose = gymapi.Transform()
-        table_stand_start_pose.p = gymapi.Vec3(*table_stand_pos)
-        table_stand_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        table_stand_left_start_pose = gymapi.Transform()
+        table_stand_left_start_pose.p = gymapi.Vec3(*l_table_stand_pos)
+        table_stand_left_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+
+        table_stand_right_start_pose = gymapi.Transform()
+        table_stand_right_start_pose.p = gymapi.Vec3(*r_table_stand_pos)
+        table_stand_right_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
         # Define start pose for cubes (doesn't really matter since they're get overridden during reset() anyways)
         cubeA_start_pose = gymapi.Transform()
@@ -380,8 +386,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # compute aggregate size
         num_ur3_bodies = sum([self.gym.get_asset_rigid_body_count(asset) for asset in self.allegro_ur3_assets])
         num_ur3_shapes = sum([self.gym.get_asset_rigid_shape_count(asset) for asset in self.allegro_ur3_assets])
-        max_agg_bodies = num_ur3_bodies + 3     # 1 for table, table stand, cubeA
-        max_agg_shapes = num_ur3_shapes + 3     # 1 for table, table stand, cubeA
+        max_agg_bodies = num_ur3_bodies + 4     # 1 for table, table stand x2, cubeA
+        max_agg_shapes = num_ur3_shapes + 4     # 1 for table, table stand x2, cubeA
 
         self.ur3s = []
         self.envs = []
@@ -407,7 +413,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
                 rand_rot[:, -1] = self.ur3_rotation_noise * (-1. + np.random.rand() * 2.0)
                 new_quat = axisangle2quat(rand_rot).squeeze().numpy().tolist()
                 left_ur3_start_pose.r = gymapi.Quat(*new_quat)
-            left_ur3_actor = self.gym.create_actor(env_ptr, left_allegro_ur3_asset, left_ur3_start_pose, "left_ur3", i, 8, 0) # TODO, default: i,0,0
+            left_ur3_actor = self.gym.create_actor(env_ptr, left_allegro_ur3_asset, left_ur3_start_pose, "left_ur3", i, 4, 0) # TODO, default: i,0,0
             self.gym.set_actor_dof_properties(env_ptr, left_ur3_actor, self.bi_ur3_dof_props[0])
             # print("left arm index: ", self.gym.get_actor_index(env_ptr, left_ur3_actor, gymapi.DOMAIN_SIM))
 
@@ -420,7 +426,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
             # Create table
             table_actor = self.gym.create_actor(env_ptr, table_asset, table_start_pose, "table", i, 1, 0)
-            table_stand_actor = self.gym.create_actor(env_ptr, table_stand_asset, table_stand_start_pose, "table_stand", i, 1, 0)
+            l_table_stand_actor = self.gym.create_actor(env_ptr, table_stand_asset, table_stand_left_start_pose, "left_table_stand", i, 1, 0)
+            r_table_stand_actor = self.gym.create_actor(env_ptr, table_stand_asset, table_stand_right_start_pose, "right_table_stand", i, 1, 0)
 
             if self.aggregate_mode == 1:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
@@ -454,7 +461,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "hand_left": self.gym.find_actor_rigid_body_handle(env_ptr, left_ur3_handle, "tool0"),
             "grip_site_left": self.gym.find_actor_rigid_body_handle(env_ptr, left_ur3_handle, "allegro_grip_site"),
             "hand_right": self.gym.find_actor_rigid_body_handle(env_ptr, right_ur3_handle, "tool0"),
-            "grip_site_right": self.gym.find_actor_rigid_body_handle(env_ptr, right_ur3_handle + 1, "allegro_grip_site"),
+            "grip_site_right": self.gym.find_actor_rigid_body_handle(env_ptr, right_ur3_handle, "allegro_grip_site"),
             # Cubes
             "cubeA_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cubeA_id, "box"),
         }
@@ -560,7 +567,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._r_finger_control = self._r_effort_control[:, 6:]
 
         # Initialize indices
-        num_actors = 5
+        num_actors = 6
         self._global_indices = torch.arange(self.num_envs * num_actors, dtype=torch.int32,
                                             device=self.device).view(self.num_envs, -1)
 
@@ -579,6 +586,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "r_eef_pos": self._r_eef_state[:, :3],
             "r_eef_quat": self._r_eef_state[:, 3:7],
             "r_eef_vel": self._r_eef_state[:, 7:],
+            # Bimanual states
+            "left_right_relative_hand_pos": self._l_eef_state[:, :3] - self._r_eef_state[:, :3],
             # Cubes
             "cubeA_quat": self._cubeA_state[:, 3:7],
             "cubeA_pos": self._cubeA_state[:, :3],
@@ -601,7 +610,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
     def compute_reward(self, actions):  # TODO!
         self.rew_buf[:], self.reset_buf[:] = compute_franka_reward(
-            self.reset_buf, self.progress_buf, self.actions, self._l_qd, self.states, self.reward_settings, self.max_episode_length
+            self.reset_buf, self.progress_buf, self.actions, self._l_qd, self._r_qd, self.states, self.reward_settings, self.max_episode_length
         )
 
     def compute_observations(self):
@@ -737,6 +746,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
         this_cube_state_all[env_ids, 10:] = 1.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
 
     def _compute_osc_torques(self, dpose):
+        """
+            * NOT used in this project..
+        """
         d = 6   # actual joint dof
         # Solve for Operational Space Control # Paper: khatib.stanford.edu/publications/pdfs/Khatib_1987_RA.pdf
         # Helpful resource: studywolf.wordpress.com/2013/09/17/robot-control-4-operation-space-control/
@@ -771,19 +783,18 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.actions = actions.clone().to(self.device)
 
         # Split arm and finger command
-        u_arm, u_finger = self.actions[:, :6], self.actions[:, 6:]
-
-        # print(u_arm, u_gripper)
-        # print(self.cmd_limit, self.action_scale)
+        l_u_arm, l_u_finger = self.actions[:, :6], self.actions[:, 6:22]
+        r_u_arm, r_u_finger = self.actions[:, 22:22+6], self.actions[:, 22+6:]
 
         # Control arm (scale value first)
-        u_arm = u_arm * self.cmd_limit / self.action_scale
-        if self.control_type == "osc":
-            u_arm = self._compute_osc_torques(dpose=u_arm)
-        self._l_arm_control[:, :] = u_arm
-        self._l_finger_control[:, :] = u_finger
-        self._r_arm_control[:, :] = u_arm
-        self._r_finger_control[:, :] = u_finger
+        l_u_arm = l_u_arm * self.l_cmd_limit / self.action_scale
+        r_u_arm = r_u_arm * self.r_cmd_limit / self.action_scale
+        # if self.control_type == "osc":  # TODO, NOT used in this project..
+        #     u_arm = self._compute_osc_torques(dpose=u_arm)
+        self._l_arm_control[:, :] = l_u_arm
+        self._l_finger_control[:, :] = l_u_finger
+        self._r_arm_control[:, :] = r_u_arm
+        self._r_finger_control[:, :] = r_u_finger
 
         # Deploy actions
         # self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self._pos_control))
@@ -805,14 +816,16 @@ class BimanualDexCatchUR3Allegro(VecTask):
             self.gym.refresh_rigid_body_state_tensor(self.sim)
 
             # Grab relevant states to visualize
-            eef_pos = self.states["eef_pos"]
-            eef_rot = self.states["eef_quat"]
+            l_eef_pos = self.states["l_eef_pos"]
+            l_eef_rot = self.states["l_eef_quat"]
+            r_eef_pos = self.states["r_eef_pos"]
+            r_eef_rot = self.states["r_eef_quat"]
 
             cubeA_pos = self.states["cubeA_pos"]
             cubeA_rot = self.states["cubeA_quat"]
 
-            pos_list = [eef_pos]
-            rot_list = [eef_rot]
+            pos_list = [l_eef_pos, r_eef_pos]
+            rot_list = [l_eef_rot, r_eef_rot]
 
             # Plot visualizations
             for i in range(self.num_envs):
@@ -833,29 +846,41 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
 @torch.jit.script
 def compute_franka_reward(
-    reset_buf, progress_buf, actions, _qd, states, reward_settings, max_episode_length
+    reset_buf, progress_buf, actions, _l_qd, _r_qd, states, reward_settings, max_episode_length
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor]
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor]
 
     cubeA_size = states["cubeA_size"]
 
     # distance from hand to the cubeA
-    d = torch.norm(states["cubeA_pos_relative_left_hand"], dim=-1)
+    ld = torch.norm(states["cubeA_pos_relative_left_hand"], dim=-1)
+    rd = torch.norm(states["cubeA_pos_relative_right_hand"], dim=-1)
     # d_lf = torch.norm(states["cubeA_pos"] - states["eef_lf_pos"], dim=-1)
     # d_rf = torch.norm(states["cubeA_pos"] - states["eef_rf_pos"], dim=-1)
-    dist_reward = 1 - torch.tanh(10.0 * d / 3)
-    dist_reward += torch.where(d < 0.01, 1.0, 0.0)  # reward bonus
+    l_dist_reward = 1 - torch.tanh(10.0 * ld)
+    r_dist_reward = 1 - torch.tanh(10.0 * rd)
+    l_dist_reward += torch.where(ld < 0.01, 1.0, 0.0)  # reward bonus
+    r_dist_reward += torch.where(rd < 0.01, 1.0, 0.0)  # reward bonus
+    dist_reward = 0.5 * l_dist_reward + 0.5 * r_dist_reward
+    # dist_reward = torch.max(l_dist_reward, r_dist_reward)
+
+    # distance between hands to avoid collision
+    max_sep_dist = 0.1
+    sep_d = torch.norm(states["left_right_relative_hand_pos"], dim=-1)
+    sep_dist_reward = 1 - torch.tanh(-10.0 * sep_d)
 
     # reward for lifting cubeA
     cubeA_height = states["cubeA_pos"][:, 2] - reward_settings["table_height"]
     cubeA_lifted = (cubeA_height - cubeA_size) > 0.04
     lift_reward = cubeA_lifted
 
-    ur_actions_penalty = torch.sum(torch.abs(_qd[..., 0:6]), dim=-1) * 0.01
-    allegro_actions_penalty = torch.sum(torch.abs(_qd[..., 7:]), dim=-1) * 0.01
-    action_penalty = -1 * ur_actions_penalty - 1 * allegro_actions_penalty
+    ur_actions_penalty = (torch.sum(torch.abs(_l_qd[..., 0:6]), dim=-1) + torch.sum(torch.abs(_r_qd[..., 0:6]), dim=-1))
+    allegro_actions_penalty = (torch.sum(torch.abs(_l_qd[..., 7:]), dim=-1) + torch.sum(torch.abs(_r_qd[..., 7:]), dim=-1))
+    action_penalty = -1.0 * ur_actions_penalty - 1.0 * allegro_actions_penalty
 
-    rewards = reward_settings["r_dist_scale"] * dist_reward + reward_settings["r_lift_scale"] * lift_reward + action_penalty
+    rewards = (reward_settings["r_dist_scale"] * dist_reward + reward_settings["r_lift_scale"] * lift_reward +
+               reward_settings["sep_dist_scale"] * sep_dist_reward +
+               reward_settings["act_penalty_scale"] * action_penalty)
 
     # Compute resets
     # drop_reset = (states["cubeA_pos"][:, 2] < -0.05) | (states["cubeB_pos"][:, 2] < -0.05)
