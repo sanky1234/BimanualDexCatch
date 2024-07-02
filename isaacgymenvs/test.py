@@ -237,7 +237,7 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     # Test Config
     cfg.test = True
-    folder = 'BimanualDexCatchUR3Allegro_20-20-17-50'
+    folder = 'BimanualDexCatchUR3Allegro_02-15-33-41'
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64
