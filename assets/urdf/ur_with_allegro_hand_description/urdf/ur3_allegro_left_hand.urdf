@@ -548,7 +548,7 @@
   <link name="allegro_grip_site"/>  <!-- dummy link -->
   <joint name="allegro_grip_tool0" type="fixed">
     <!-- default toolframe - X+ left, Y+ up, Z+ front -->
-    <origin rpy="0 0 0" xyz="0 0 0.0625"/>
+    <origin rpy="0 0 0" xyz="0 0.02 0.0625"/>
     <parent link="tool0"/>
     <child link="allegro_grip_site"/>
   </joint>

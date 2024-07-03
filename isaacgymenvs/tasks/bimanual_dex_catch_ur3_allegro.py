@@ -124,7 +124,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # dimensions
         # obs if osc: cubeA_pose (7) + eef_pose (7) + fingers (16) = 30
         # obs if joint: cubeA_pose (7) + joints (6) + fingers (16) = 29
-        self.cfg["env"]["numObservations"] = 30 if self.control_type == "osc" else 51
+        self.cfg["env"]["numObservations"] = 30 if self.control_type == "osc" else 63
 
         # actions if osc: delta EEF if OSC (6) + finger torques (16) = 22
         # actions if joint: joint torques (6) + finger torques (16) = 22
@@ -199,9 +199,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
         # UR3 defaults
-        self.default_left_ur3_pose = {"forward": [deg2rad(0.0), deg2rad(-90.0), deg2rad(110.0), deg2rad(-40.0), deg2rad(90.0), deg2rad(0.0)],
+        self.default_left_ur3_pose = {"forward": [deg2rad(0.0), deg2rad(-90.0), deg2rad(110.0), deg2rad(-40.0), deg2rad(90.0), deg2rad(90.0)],
                                       "downward": [deg2rad(0.0), deg2rad(-120.0), deg2rad(-114.0), deg2rad(-36.0), deg2rad(80.0), deg2rad(0.0)]}
-        self.default_right_ur3_pose = {"forward": [deg2rad(0.0), deg2rad(-90.0), deg2rad(-110.0), deg2rad(-160.0), deg2rad(-90.0), deg2rad(0.0)],
+        self.default_right_ur3_pose = {"forward": [deg2rad(0.0), deg2rad(-90.0), deg2rad(-110.0), deg2rad(-160.0), deg2rad(-90.0), deg2rad(-90.0)],
                                        "downward": [deg2rad(0.0), deg2rad(-120.0), deg2rad(-114.0), deg2rad(-36.0), deg2rad(80.0), deg2rad(0.0)]}
 
         self.default_allegro_pose = {
@@ -271,6 +271,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.objects.cubeA.color = cubeA_color
 
         ball_opts = gymapi.AssetOptions()
+        ball_opts.density = 9
         ball_asset = self.gym.create_sphere(self.sim, self.ball_size * 0.5, ball_opts)
         ball_color = gymapi.Vec3(0.3, 0.1, 0.6)
         self.objects.ball.asset = ball_asset
@@ -709,6 +710,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
             # Target Object
             "object_quat": self._target_obj_state[:, 3:7],
             "object_pos": self._target_obj_state[:, :3],
+            "object_pos_vel": self._target_obj_state[:, 7:10],
+            "object_rot_vel": self._target_obj_state[:, 10:],
             "object_pos_relative_left_hand": self._target_obj_state[:, :3] - self._l_eef_state[:, :3],
             "object_pos_relative_right_hand": self._target_obj_state[:, :3] - self._r_eef_state[:, :3],
             "object_size": self.states["ball_size"],    # TODO,
@@ -738,7 +741,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
         if self.control_type == "osc":
             obs = ["cubeA_quat", "cubeA_pos", "l_eef_pos", "l_eef_quat", "r_eef_pos", "r_eef_quat"]
         else:
-            obs = ["object_quat", "object_pos", "l_q", "r_q"]     # ["cubeA_quat", "cubeA_pos", "l_q", "r_q"]
+            # 4 + 3 + 3 + 3 + 6 + 6 + 3 + 3 + 16 + 16
+            obs = ["object_quat", "object_pos", "object_pos_vel", "object_rot_vel", "l_q", "r_q",
+                   "object_pos_relative_left_hand", "object_pos_relative_right_hand"]     # ["cubeA_quat", "cubeA_pos", "l_q", "r_q"]
         obs += ["l_q_finger"] + ["r_q_finger"]
 
         self.obs_buf = torch.cat([self.states[ob] for ob in obs], dim=-1)
@@ -876,8 +881,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
         this_object_state_all[env_ids, :] = sampled_obj_state
 
         # linear/angular velocity randomization, m/s, radian/s
-        this_object_state_all[env_ids, 7:10] = 1.5 * torch.tensor([10.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        this_object_state_all[env_ids, 7:10] = 1.0 * torch.tensor([7.0, 2.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
         this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7])
+        this_object_state_all[env_ids, 9] = torch.abs(this_object_state_all[env_ids, 9]) + 1.0
         this_object_state_all[env_ids, 10:] = 1.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
 
     def _reset_init_cube_state(self, cube, env_ids):
@@ -1063,6 +1069,7 @@ def compute_franka_reward(
     # distance between hands to avoid collision
     max_sep_dist = 0.1
     sep_d = torch.norm(states["left_right_relative_hand_pos"], dim=-1)
+    sep_d = torch.clamp(sep_d, 0.0, 0.2)
     sep_dist_reward = 1 - torch.tanh(-10.0 * sep_d)
 
     # reward for lifting cubeA
@@ -1078,7 +1085,8 @@ def compute_franka_reward(
     allegro_actions_penalty = (torch.sum(torch.abs(_l_qd[..., 7:]), dim=-1) + torch.sum(torch.abs(_r_qd[..., 7:]), dim=-1))
     action_penalty = 1.0 * ur_actions_penalty + 1.0 * allegro_actions_penalty
 
-    rewards = (reward_settings["r_dist_scale"] * dist_reward + reward_settings["r_lift_scale"] * lift_reward
+    rewards = (reward_settings["r_dist_scale"] * dist_reward
+               + reward_settings["r_lift_scale"] * lift_reward
                + reward_settings["sep_dist_scale"] * sep_dist_reward
                - reward_settings["contact_penalty_scale"] * arm_contact_n_mag_mean
                - reward_settings["act_penalty_scale"] * action_penalty)

@@ -22,12 +22,12 @@ env:
   aggregateMode: 3
 
   actionScale: 1.0
-  distRewardScale: 0.1
-  liftRewardScale: 1.5
-  alignRewardScale: 2.0
-  stackRewardScale: 16.0
-  sepRewardScale: 0.5
-  contactPenaltyScale: 1.0
+
+  # reward scales
+  distRewardScale: 5.0
+  liftRewardScale: 2.0
+  sepRewardScale: 0.2
+  contactPenaltyScale: 0.1
   actionPenaltyScale: 0.01
 
   controlType: joint_tor  # options are {joint_tor, osc}

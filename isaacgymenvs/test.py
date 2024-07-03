@@ -199,10 +199,10 @@ def launch_rlg_hydra(cfg: DictConfig):
     runner.reset()
 
     # dump config dict
+    cfg.test = True
     if not cfg.test:
-        experiment_dir = os.path.join('runs', cfg.train.params.config.name + 
-        '_{date:%d-%H-%M-%S}'.format(date=datetime.now()))
-
+        experiment_dir = os.path.join('runs', cfg.train.params.config.name +
+                                      '_{date:%Y-%m-%d_%H-%M-%S}'.format(date=datetime.now()))
         os.makedirs(experiment_dir, exist_ok=True)
         with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
             f.write(OmegaConf.to_yaml(cfg))
@@ -236,8 +236,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         return max(last_files, key=extract_episode_number, default=None)
 
     # Test Config
-    cfg.test = True
-    folder = 'BimanualDexCatchUR3Allegro_02-15-33-41'
+    folder = 'BimanualDexCatchUR3Allegro_03-13-10-10'
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64

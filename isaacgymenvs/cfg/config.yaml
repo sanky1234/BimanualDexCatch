@@ -15,15 +15,18 @@ torch_deterministic: False
 # set the maximum number of learning iterations to train for. overrides default per-environment setting
 max_iterations: 10000
 
+# for test
+games_num: 1000
+
 ## Device config
 #  'physx' or 'flex'
 physics_engine: 'physx'
 # whether to use cpu or gpu pipeline
 pipeline: 'gpu'
 # device for running physics simulation
-sim_device: 'cuda:0'
+sim_device: 'cuda:1'
 # device to run RL
-rl_device: 'cuda:0'
+rl_device: 'cuda:1'
 graphics_device_id: 1
 
 ## PhysX arguments
@@ -70,4 +73,3 @@ hydra:
   output_subdir: null
   run:
     dir: .
-
