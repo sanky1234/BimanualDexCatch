@@ -13,10 +13,7 @@ seed: 42
 torch_deterministic: False
 
 # set the maximum number of learning iterations to train for. overrides default per-environment setting
-max_iterations: 10000
-
-# for test
-games_num: 1000
+max_iterations: 50000
 
 ## Device config
 #  'physx' or 'flex'
@@ -24,9 +21,9 @@ physics_engine: 'physx'
 # whether to use cpu or gpu pipeline
 pipeline: 'gpu'
 # device for running physics simulation
-sim_device: 'cuda:1'
+sim_device: 'cuda:0'
 # device to run RL
-rl_device: 'cuda:1'
+rl_device: 'cuda:0'
 graphics_device_id: 1
 
 ## PhysX arguments
@@ -37,7 +34,7 @@ num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one
 # RLGames Arguments
 # test - if set, run policy in inference mode (requires setting checkpoint to load)
 test: False
-# used to set checkpoint path
+# used to set checkpoint path, full path should be provided from runs folder: (e.g., runs/model_folder/nn/model_name.pth)
 checkpoint: ''
 # set sigma when restoring network
 sigma: ''

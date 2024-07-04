@@ -217,7 +217,8 @@ def launch_rlg_hydra(cfg: DictConfig):
                 project_name_with_numbers = project_name_with_numbers.group(1)
 
                 # Remove numbers and anything following them that start with '_' from the project name.
-                project_name = re.sub(r'_(\d+).*$', '', project_name_with_numbers)
+                # project_name = re.sub(r'_(\d+).*$', '', project_name_with_numbers)
+                project_name = project_name_with_numbers
                 return project_name + '.pth'
             return None
 
@@ -236,7 +237,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         return max(last_files, key=extract_episode_number, default=None)
 
     # Test Config
-    folder = 'BimanualDexCatchUR3Allegro_03-13-10-10'
+    folder = 'BimanualDexCatchUR3Allegro_2024-07-04_13-33-25'
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64

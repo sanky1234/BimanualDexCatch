@@ -110,6 +110,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # Create dicts to pass to reward function
         self.reward_settings = {
             "r_dist_scale": self.cfg["env"]["distRewardScale"],
+            "r_hand_scale": self.cfg["env"]["handRewardScale"],
             "r_lift_scale": self.cfg["env"]["liftRewardScale"],
             "sep_dist_scale": self.cfg["env"]["sepRewardScale"],
             "contact_penalty_scale": self.cfg["env"]["contactPenaltyScale"],
@@ -199,9 +200,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
         # UR3 defaults
-        self.default_left_ur3_pose = {"forward": [deg2rad(0.0), deg2rad(-90.0), deg2rad(110.0), deg2rad(-40.0), deg2rad(90.0), deg2rad(90.0)],
+        self.default_left_ur3_pose = {"forward": [deg2rad(45.0), deg2rad(-90.0), deg2rad(110.0), deg2rad(-40.0), deg2rad(90.0), deg2rad(90.0)],
                                       "downward": [deg2rad(0.0), deg2rad(-120.0), deg2rad(-114.0), deg2rad(-36.0), deg2rad(80.0), deg2rad(0.0)]}
-        self.default_right_ur3_pose = {"forward": [deg2rad(0.0), deg2rad(-90.0), deg2rad(-110.0), deg2rad(-160.0), deg2rad(-90.0), deg2rad(-90.0)],
+        self.default_right_ur3_pose = {"forward": [deg2rad(-45.0), deg2rad(-90.0), deg2rad(-110.0), deg2rad(-160.0), deg2rad(-90.0), deg2rad(-90.0)],
                                        "downward": [deg2rad(0.0), deg2rad(-120.0), deg2rad(-114.0), deg2rad(-36.0), deg2rad(80.0), deg2rad(0.0)]}
 
         self.default_allegro_pose = {
@@ -420,6 +421,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Define start pose for throwing
         self._throw_start_pos = np.array(table_pos) + np.array([table_length / 2, 0, table_thickness / 2])
+        self._throw_start_pos[0] += 0.2
+        self._throw_start_pos[2] += 0.3
 
         # Define start pose for table stand
         table_stand_left_start_pose = gymapi.Transform()
@@ -584,6 +587,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "grip_site_left": self.gym.find_actor_rigid_body_handle(env_ptr, left_ur3_handle, "allegro_grip_site"),
             "hand_right": self.gym.find_actor_rigid_body_handle(env_ptr, right_ur3_handle, "tool0"),
             "grip_site_right": self.gym.find_actor_rigid_body_handle(env_ptr, right_ur3_handle, "allegro_grip_site"),
+            "base_left": self.gym.find_actor_rigid_body_handle(env_ptr, left_ur3_handle, "base_link"),
+            "base_right": self.gym.find_actor_rigid_body_handle(env_ptr, right_ur3_handle, "base_link"),
             # Cubes
             "cubeA_body_handle": self.gym.find_actor_rigid_body_handle(env_ptr, self._cubeA_id, "box"),
         }
@@ -616,7 +621,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._r_qd = self._qd[:, dof_per_arm:]
         self._l_eef_state = self._rigid_body_state[:, self.handles["grip_site_left"], :]
         self._r_eef_state = self._rigid_body_state[:, self.handles["grip_site_right"], :]
-        # self._grip_state = self._rigid_body_state[:, self.handles["grip_site"], :]
+        self._l_base_state = self._rigid_body_state[:, self.handles["base_left"], :]
+        self._r_base_state = self._rigid_body_state[:, self.handles["base_right"], :]
         _l_jacobian = self.gym.acquire_jacobian_tensor(self.sim, "left_ur3")
         l_jacobian = gymtorch.wrap_tensor(_l_jacobian)
         _r_jacobian = self.gym.acquire_jacobian_tensor(self.sim, "right_ur3")
@@ -680,6 +686,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         l_arm_contact_n_mag = F.normalize(self._l_contact_forces[:, self.ids_for_contact], p=2, dim=-1)
         r_arm_contact_n_mag = F.normalize(self._r_contact_forces[:, self.ids_for_contact], p=2, dim=-1)
 
+        obj_goal_offset = torch.tensor([0.35, 0.0, 0.4], device=self.device)
+
         self.states.update({
             # Left Allegro UR3
             "l_q": self._l_q[:, :6],
@@ -697,6 +705,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "right_arm_contact_n_mag": r_arm_contact_n_mag,
             # Bimanual states
             "left_right_relative_hand_pos": self._l_eef_state[:, :3] - self._r_eef_state[:, :3],
+            "object_goal_pos": (self._l_base_state[:, :3] + self._r_base_state[:, :3]) * 0.5 + obj_goal_offset,
             # Cube
             "cubeA_quat": self._cubeA_state[:, 3:7],
             "cubeA_pos": self._cubeA_state[:, :3],
@@ -881,8 +890,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         this_object_state_all[env_ids, :] = sampled_obj_state
 
         # linear/angular velocity randomization, m/s, radian/s
-        this_object_state_all[env_ids, 7:10] = 1.0 * torch.tensor([7.0, 2.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
-        this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7])
+        this_object_state_all[env_ids, 7:10] = 1.0 * torch.tensor([5.0, 2.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7]) - 1.0
         this_object_state_all[env_ids, 9] = torch.abs(this_object_state_all[env_ids, 9]) + 1.0
         this_object_state_all[env_ids, 10:] = 1.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
 
@@ -1022,12 +1031,14 @@ class BimanualDexCatchUR3Allegro(VecTask):
             l_eef_rot = self.states["l_eef_quat"]
             r_eef_pos = self.states["r_eef_pos"]
             r_eef_rot = self.states["r_eef_quat"]
+            obj_goal_pos = self.states["object_goal_pos"]
+            obj_goal_rot = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).repeat(self.num_envs, 1)
 
             cubeA_pos = self.states["cubeA_pos"]
             cubeA_rot = self.states["cubeA_quat"]
 
-            pos_list = [l_eef_pos, r_eef_pos]
-            rot_list = [l_eef_rot, r_eef_rot]
+            pos_list = [obj_goal_pos]
+            rot_list = [obj_goal_rot]
 
             # Plot visualizations
             for i in range(self.num_envs):
@@ -1063,8 +1074,13 @@ def compute_franka_reward(
     r_dist_reward = 1 - torch.tanh(10.0 * rd)
     l_dist_reward += torch.where(ld < 0.01, 1.0, 0.0)  # reward bonus
     r_dist_reward += torch.where(rd < 0.01, 1.0, 0.0)  # reward bonus
-    dist_reward = 0.5 * l_dist_reward + 0.5 * r_dist_reward
+    hand_dist_reward = 0.5 * l_dist_reward + 0.5 * r_dist_reward
     # dist_reward = torch.max(l_dist_reward, r_dist_reward)
+
+    # object goal distance to target point
+    gd = torch.norm(states["object_goal_pos"], dim=-1)
+    goal_dist_reward = 1 - torch.tanh(10.0 * gd)
+    goal_dist_reward += torch.where(gd < 0.01, 1.0, 0.0)    # reward bonus
 
     # distance between hands to avoid collision
     max_sep_dist = 0.1
@@ -1085,7 +1101,8 @@ def compute_franka_reward(
     allegro_actions_penalty = (torch.sum(torch.abs(_l_qd[..., 7:]), dim=-1) + torch.sum(torch.abs(_r_qd[..., 7:]), dim=-1))
     action_penalty = 1.0 * ur_actions_penalty + 1.0 * allegro_actions_penalty
 
-    rewards = (reward_settings["r_dist_scale"] * dist_reward
+    rewards = (reward_settings["r_hand_scale"] * hand_dist_reward
+               + reward_settings["r_dist_scale"] * goal_dist_reward
                + reward_settings["r_lift_scale"] * lift_reward
                + reward_settings["sep_dist_scale"] * sep_dist_reward
                - reward_settings["contact_penalty_scale"] * arm_contact_n_mag_mean
