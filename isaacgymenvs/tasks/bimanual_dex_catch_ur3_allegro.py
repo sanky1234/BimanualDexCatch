@@ -109,7 +109,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Create dicts to pass to reward function
         self.reward_settings = {
-            "r_dist_scale": self.cfg["env"]["distRewardScale"],
+            "r_goal_scale": self.cfg["env"]["goalRewardScale"],
             "r_hand_scale": self.cfg["env"]["handRewardScale"],
             "r_lift_scale": self.cfg["env"]["liftRewardScale"],
             "sep_dist_scale": self.cfg["env"]["sepRewardScale"],
@@ -200,9 +200,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
         # UR3 defaults
-        self.default_left_ur3_pose = {"forward": [deg2rad(45.0), deg2rad(-90.0), deg2rad(110.0), deg2rad(-40.0), deg2rad(90.0), deg2rad(90.0)],
+        self.default_left_ur3_pose = {"forward": [deg2rad(30.0), deg2rad(-90.0), deg2rad(110.0), deg2rad(-40.0), deg2rad(90.0), deg2rad(90.0)],
                                       "downward": [deg2rad(0.0), deg2rad(-120.0), deg2rad(-114.0), deg2rad(-36.0), deg2rad(80.0), deg2rad(0.0)]}
-        self.default_right_ur3_pose = {"forward": [deg2rad(-45.0), deg2rad(-90.0), deg2rad(-110.0), deg2rad(-160.0), deg2rad(-90.0), deg2rad(-90.0)],
+        self.default_right_ur3_pose = {"forward": [deg2rad(-30.0), deg2rad(-90.0), deg2rad(-110.0), deg2rad(-160.0), deg2rad(-90.0), deg2rad(-90.0)],
                                        "downward": [deg2rad(0.0), deg2rad(-120.0), deg2rad(-114.0), deg2rad(-36.0), deg2rad(80.0), deg2rad(0.0)]}
 
         self.default_allegro_pose = {
@@ -261,7 +261,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.objects.ball = AttrDict()
 
         self.cubeA_size = 0.05
-        self.ball_size = 0.6
+        self.ball_size = 0.6    # diameter
 
         # Create cubeA asset
         cubeA_opts = gymapi.AssetOptions()
@@ -273,6 +273,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         ball_opts = gymapi.AssetOptions()
         ball_opts.density = 9
+        ball_opts.disable_gravity = False    # TODO
         ball_asset = self.gym.create_sphere(self.sim, self.ball_size * 0.5, ball_opts)
         ball_color = gymapi.Vec3(0.3, 0.1, 0.6)
         self.objects.ball.asset = ball_asset
@@ -595,6 +596,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         bodies_to_detect_contacts = ["base_link_inertia", "shoulder_link", "upper_arm_link", "forearm_link",
                                      "wrist_1_link", "wrist_2_link", "wrist_3_link"]
+        # TODO, hand-side contacts should be encouraged..
+        fingers_to_detect_contacts = ["link_3_tip", "link_7_tip", "link_11_tip", "link_15_tip", "palm_link"]
         self.ids_for_contact = get_indices_from_dict(self.allegro_ur3_body_dict, bodies_to_detect_contacts)
 
         # Get total DOFs
@@ -714,6 +717,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
             # Ball
             "ball_quat": self._ball_state[:, 3:7],
             "ball_pos": self._ball_state[:, :3],
+            "ball_pos_vel": self._ball_state[:, 7:10],
+            "ball_rot_vel": self._ball_state[:, 10:],
             "ball_pos_relative_left_hand": self._ball_state[:, :3] - self._l_eef_state[:, :3],
             "ball_pos_relative_right_hand": self._ball_state[:, :3] - self._r_eef_state[:, :3],
             # Target Object
@@ -1070,17 +1075,20 @@ def compute_franka_reward(
     rd = torch.norm(states["object_pos_relative_right_hand"], dim=-1)
     # d_lf = torch.norm(states["cubeA_pos"] - states["eef_lf_pos"], dim=-1)
     # d_rf = torch.norm(states["cubeA_pos"] - states["eef_rf_pos"], dim=-1)
-    l_dist_reward = 1 - torch.tanh(10.0 * ld)
-    r_dist_reward = 1 - torch.tanh(10.0 * rd)
-    l_dist_reward += torch.where(ld < 0.01, 1.0, 0.0)  # reward bonus
-    r_dist_reward += torch.where(rd < 0.01, 1.0, 0.0)  # reward bonus
+    l_dist_reward = torch.exp(-10.0 * ld)
+    r_dist_reward = torch.exp(-10.0 * rd)
+    # l_dist_reward = 1 - torch.tanh(10.0 * ld)
+    # r_dist_reward = 1 - torch.tanh(10.0 * rd)
+    # l_dist_reward += torch.where(ld < 0.01, 1.0, 0.0)  # reward bonus
+    # r_dist_reward += torch.where(rd < 0.01, 1.0, 0.0)  # reward bonus
     hand_dist_reward = 0.5 * l_dist_reward + 0.5 * r_dist_reward
     # dist_reward = torch.max(l_dist_reward, r_dist_reward)
 
     # object goal distance to target point
     gd = torch.norm(states["object_goal_pos"], dim=-1)
-    goal_dist_reward = 1 - torch.tanh(10.0 * gd)
-    goal_dist_reward += torch.where(gd < 0.01, 1.0, 0.0)    # reward bonus
+    goal_dist_reward = torch.exp(-10.0 * gd)
+    # goal_dist_reward = 1 - torch.tanh(10.0 * gd)
+    # goal_dist_reward += torch.where(gd < 0.01, 1.0, 0.0)    # reward bonus
 
     # distance between hands to avoid collision
     max_sep_dist = 0.1
@@ -1102,7 +1110,7 @@ def compute_franka_reward(
     action_penalty = 1.0 * ur_actions_penalty + 1.0 * allegro_actions_penalty
 
     rewards = (reward_settings["r_hand_scale"] * hand_dist_reward
-               + reward_settings["r_dist_scale"] * goal_dist_reward
+               + reward_settings["r_goal_scale"] * goal_dist_reward
                + reward_settings["r_lift_scale"] * lift_reward
                + reward_settings["sep_dist_scale"] * sep_dist_reward
                - reward_settings["contact_penalty_scale"] * arm_contact_n_mag_mean

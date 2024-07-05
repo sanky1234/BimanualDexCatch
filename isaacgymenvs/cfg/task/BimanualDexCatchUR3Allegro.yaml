@@ -24,12 +24,12 @@ env:
   actionScale: 1.0
 
   # reward scales
-  handRewardScale: 0.5
-  distRewardScale: 5.0
-  liftRewardScale: 0.0
+  handRewardScale: 1.0
+  goalRewardScale: 5.0
+  liftRewardScale: 0.1
   sepRewardScale: 0.0
-  contactPenaltyScale: 0.0
-  actionPenaltyScale: 0.01
+  contactPenaltyScale: 0.5
+  actionPenaltyScale: 0.001
 
   controlType: joint_tor  # options are {joint_tor, osc}
 

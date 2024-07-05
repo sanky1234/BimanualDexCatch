@@ -21,9 +21,9 @@ params:
           val: 0
         fixed_sigma: True
     mlp:
-      units: [512, 256, 128]
+      units: [512, 512, 512]
       activation: elu
-      d2rl: False
+      d2rl: True
 
       initializer:
         name: default
