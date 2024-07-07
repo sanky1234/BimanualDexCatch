@@ -689,7 +689,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         l_arm_contact_n_mag = F.normalize(self._l_contact_forces[:, self.ids_for_contact], p=2, dim=-1)
         r_arm_contact_n_mag = F.normalize(self._r_contact_forces[:, self.ids_for_contact], p=2, dim=-1)
 
-        obj_goal_offset = torch.tensor([0.35, 0.0, 0.4], device=self.device)
+        obj_goal_offset = torch.tensor([0.3, 0.0, max(self.ball_size, 0.4)], device=self.device)
 
         self.states.update({
             # Left Allegro UR3
