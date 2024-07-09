@@ -588,7 +588,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         """
 
         # Setup init state buffer
-        self._init_object_state = torch.zeros(self.num_envs, self.num_objs, 13, device=self.device)
+        self._init_object_state = torch.zeros(self.num_envs, 13, device=self.device)
 
         # Setup data
         self.init_data()
@@ -800,19 +800,19 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # Reset cubeA
         # if not self._i:
         # self._reset_init_cube_state(cube='A', env_ids=env_ids)
-        self._reset_init_object_state(env_ids=env_ids, rand_obj=rand_obj)
+        self._reset_init_object_state(obj='A', env_ids=env_ids)
         # self._i = True
 
         # TODO, target object change!
         # Write these new init states to the sim states
-        self._ball_state[env_ids] = self._init_object_state[env_ids, self._ball_id - self._obj_ref_id]
-        self._cubeA_state[env_ids] = self._init_object_state[env_ids, self._cube_id - self._obj_ref_id]
+        # self._ball_state[env_ids] = self._init_object_state[env_ids, self._ball_id - self._obj_ref_id]
+        # self._cubeA_state[env_ids] = self._init_object_state[env_ids, self._cube_id - self._obj_ref_id]
 
-        # self._ball_state[env_ids] = zero_state(self._init_object_state[env_ids], self._object_size_vec[env_ids], self.device)
-        # self._cubeA_state[env_ids] = zero_state(self._init_object_state[env_ids], self._object_size_vec[env_ids], self.device)
-        #
-        # self._ball_state[env_ids[_balls]] = self._init_object_state[env_ids[_balls]]
-        # self._cubeA_state[env_ids[_cubes]] = self._init_object_state[env_ids[_cubes]]
+        self._ball_state[env_ids] = zero_state(self._init_object_state[env_ids], self._object_size_vec[env_ids], self.device)
+        self._cubeA_state[env_ids] = zero_state(self._init_object_state[env_ids], self._object_size_vec[env_ids], self.device)
+
+        self._ball_state[env_ids[_balls]] = self._init_object_state[env_ids[_balls]]
+        self._cubeA_state[env_ids[_cubes]] = self._init_object_state[env_ids[_cubes]]
 
         # Reset agent
         reset_noise = torch.rand((len(env_ids), self.num_allegro_ur3_dofs), device=self.device)
@@ -860,75 +860,55 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0
 
-    def _reset_init_object_state(self, env_ids, rand_obj):
-        _balls = torch.where(rand_obj == self._ball_id)[0]
-        _not_balls = torch.where(rand_obj != self._ball_id)[0]
-        _cubes = torch.where(rand_obj == self._cube_id)[0]
-        _not_cubes = torch.where(rand_obj != self._cube_id)[0]
-
+    def _reset_init_object_state(self, obj, env_ids):
         # If env_ids is None, we reset all the envs
         if env_ids is None:
             env_ids = torch.arange(start=0, end=self.num_envs, device=self.device, dtype=torch.long)
 
         # Initialize buffer to hold sampled values
         num_resets = len(env_ids)
-        sampled_obj_state = torch.zeros(num_resets, self.num_objs, 13, device=self.device)
+        sampled_obj_state = torch.zeros(num_resets, 13, device=self.device)
 
         # Get correct references depending on which one was selected
-        this_object_state_all = self._init_object_state
-        # obj_size = self.states["object_size_vec"]
-        obj_size = self._object_size_vec
+        if obj.lower() == 'a':
+            this_object_state_all = self._init_object_state
+            obj_size = self.states["object_size_vec"]
+        else:
+            raise ValueError(f"Invalid cube specified, options are 'A' and 'B'; got: {obj}")
 
         # Sampling is "centered" around middle of table
         # centered_cube_xy_state = torch.tensor(self._table_surface_pos[:2], device=self.device, dtype=torch.float32)
         biased_obj_xy_state = torch.tensor(self._throw_start_pos[:2], device=self.device, dtype=torch.float32)
 
         # Set z value, which is fixed height
-        sampled_obj_state[:, self._ball_id - self._obj_ref_id, 2] = 0.5
-        sampled_obj_state[:, self._cube_id - self._obj_ref_id, 2] = 0.5
-        # sampled_obj_state[_balls, self._ball_id - self._obj_ref_id, 2] = self._table_surface_pos[2] + obj_size.squeeze(-1)[env_ids[_balls]]
-        # sampled_obj_state[_cubes, self._cube_id - self._obj_ref_id, 2] = self._table_surface_pos[2] + obj_size.squeeze(-1)[env_ids[_cubes]]
+        sampled_obj_state[:, 2] = self._table_surface_pos[2] + obj_size.squeeze(-1)[env_ids]
 
         # Initialize rotation, which is no rotation (quat w = 1)
-        sampled_obj_state[:, self._ball_id - self._obj_ref_id, 6] = 1.0
-        sampled_obj_state[:, self._cube_id - self._obj_ref_id, 6] = 1.0
-
-        sampled_obj_state[_balls, self._ball_id - self._obj_ref_id, :2] = biased_obj_xy_state.unsqueeze(0) + torch.cat([
-            0.5 * self.start_position_noise * (torch.rand(len(_balls), 1, device=self.device) - 0.5),
-            2.0 * self.start_position_noise * (torch.rand(len(_balls), 1, device=self.device) - 0.5)
-        ], dim=-1)
-        sampled_obj_state[_cubes, self._cube_id - self._obj_ref_id, :2] = biased_obj_xy_state.unsqueeze(0) + torch.cat([
-            0.5 * self.start_position_noise * (torch.rand(len(_cubes), 1, device=self.device) - 0.5),
-            2.0 * self.start_position_noise * (torch.rand(len(_cubes), 1, device=self.device) - 0.5)
+        sampled_obj_state[:, 6] = 1.0
+        # sampled_cube_state[:, :2] = biased_cube_xy_state.unsqueeze(0) + \
+        #                             2.0 * self.start_position_noise * (torch.rand(num_resets, 2, device=self.device) - 0.5)
+        sampled_obj_state[:, :2] = biased_obj_xy_state.unsqueeze(0) + torch.cat([
+            0.5 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5),
+            2.0 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5)
         ], dim=-1)
 
-        sampled_obj_state[_balls, self._ball_id - self._obj_ref_id, 2] = torch.tensor([3.5], device=self.device) + \
-                                   0.0 * self.start_position_noise * (torch.rand(len(_balls), device=self.device) - 0.5)
-        sampled_obj_state[_cubes, self._cube_id - self._obj_ref_id, 2] = torch.tensor([3.5], device=self.device) + \
-                                   0.0 * self.start_position_noise * (torch.rand(len(_cubes), device=self.device) - 0.5)
+        sampled_obj_state[:, 2] = torch.tensor([1.5], device=self.device) + \
+                                  2.0 * self.start_position_noise * (torch.rand(num_resets, device=self.device) - 0.5)
 
-        # TODO, should be implemented later...
-        # # Sample rotation value
-        # if self.start_rotation_noise > 0:
-        #     aa_rot = torch.zeros(num_resets, 3, device=self.device)
-        #     aa_rot[:, 2] = 2.0 * self.start_rotation_noise * (torch.rand(num_resets, device=self.device) - 0.5)
-        #     sampled_obj_state[:, 3:7] = quat_mul(axisangle2quat(aa_rot), sampled_obj_state[:, 3:7])
+        # Sample rotation value
+        if self.start_rotation_noise > 0:
+            aa_rot = torch.zeros(num_resets, 3, device=self.device)
+            aa_rot[:, 2] = 2.0 * self.start_rotation_noise * (torch.rand(num_resets, device=self.device) - 0.5)
+            sampled_obj_state[:, 3:7] = quat_mul(axisangle2quat(aa_rot), sampled_obj_state[:, 3:7])
 
         # Lastly, set these sampled values as the new init state
-        # reset first,
         this_object_state_all[env_ids, :] = sampled_obj_state
-        # this_object_state_all[env_ids, :] = torch.zeros_like(this_object_state_all[env_ids, :])
-        # this_object_state_all[env_ids, :, 6] = 1.0
-        #
-        # this_object_state_all[env_ids[_balls], (self._ball_id - self._obj_ref_id), :] = sampled_obj_state[_balls, (self._ball_id - self._obj_ref_id), :]
-        # this_object_state_all[env_ids[_cubes], (self._cube_id - self._obj_ref_id), :] = sampled_obj_state[_cubes, (self._cube_id - self._obj_ref_id), :]
 
-        # # TODO, later...
-        # # linear/angular velocity randomization, m/s, radian/s
-        # this_object_state_all[env_ids, :, 7:10] = 1.0 * torch.tensor([5.0, 2.0, 4.0], device=self.device) * (torch.rand(num_resets, self.num_objs, 3, device=self.device) - 0.5)
-        # this_object_state_all[env_ids, :, 7] = -torch.abs(this_object_state_all[env_ids, :, 7]) - 1.0     # x-axis
-        # this_object_state_all[env_ids, :, 9] = torch.abs(this_object_state_all[env_ids, :, 9]) + 1.0      # z-axis
-        # this_object_state_all[env_ids, :, 10:] = 1.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, self.num_objs, 3, device=self.device) - 0.5)
+        # linear/angular velocity randomization, m/s, radian/s
+        this_object_state_all[env_ids, 7:10] = 1.0 * torch.tensor([5.0, 2.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7]) - 1.0
+        this_object_state_all[env_ids, 9] = torch.abs(this_object_state_all[env_ids, 9]) + 1.0
+        this_object_state_all[env_ids, 10:] = 1.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
 
     def _reset_init_cube_state(self, cube, env_ids):
         """
@@ -1157,7 +1137,7 @@ def compute_franka_reward(
     if rs[-1] > 0:
         s = "ball" if object_idx[-1] == 0 else "cube"
         print("reset!!, obj: {}, temp_pos: {} - 1.025(table) = height: {}, size: {} ".format(s, temp_pos[-1], object_height[-1], object_size[-1]))
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1), # | (object_height < object_size / 2 + 1e-2),
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size / 2 + 1e-2),
                             torch.ones_like(reset_buf), reset_buf)
 
     return rewards, reset_buf
