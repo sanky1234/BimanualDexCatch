@@ -28,6 +28,7 @@ env:
   goalRewardScale: 5.0
   liftRewardScale: 0.0
   sepRewardScale: 0.0
+  contactRewardScale: 0.5
   contactPenaltyScale: 0.5
   actionPenaltyScale: 0.001
 
