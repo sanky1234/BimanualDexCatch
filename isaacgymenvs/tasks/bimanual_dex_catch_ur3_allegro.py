@@ -1133,10 +1133,10 @@ def compute_franka_reward(
 
     # Compute resets
     # drop_reset = (states["cubeA_pos"][:, 2] < -0.05) | (states["cubeB_pos"][:, 2] < -0.05)
-    rs = torch.where(object_height < object_size / 2 + 1e-2, torch.ones_like(reset_buf), reset_buf)
-    if rs[-1] > 0:
-        s = "ball" if object_idx[-1] == 0 else "cube"
-        print("reset!!, obj: {}, temp_pos: {} - 1.025(table) = height: {}, size: {} ".format(s, temp_pos[-1], object_height[-1], object_size[-1]))
+    # rs = torch.where(object_height < object_size / 2 + 1e-2, torch.ones_like(reset_buf), reset_buf)
+    # if rs[-1] > 0:
+    #     s = "ball" if object_idx[-1] == 0 else "cube"
+    #     print("reset!!, obj: {}, temp_pos: {} - 1.025(table) = height: {}, size: {} ".format(s, temp_pos[-1], object_height[-1], object_size[-1]))
     reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size / 2 + 1e-2),
                             torch.ones_like(reset_buf), reset_buf)
 
