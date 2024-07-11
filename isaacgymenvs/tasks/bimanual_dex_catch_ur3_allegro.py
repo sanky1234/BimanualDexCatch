@@ -275,29 +275,28 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.objects.gymball = AttrDict()
         self.objects.bottle = AttrDict()
 
-        self.cube_size = 0.05
-        self.gymball_size = 0.6    # diameter
-        self.bottle_size = 0.0  # height
-
         # Create cube asset
+        self.objects.cube.size = 0.05
         cube_opts = gymapi.AssetOptions()
-        cube_asset = self.gym.create_box(self.sim, *([self.cube_size] * 3), cube_opts)
+        cube_asset = self.gym.create_box(self.sim, *([self.objects.cube.size] * 3), cube_opts)
         cube_color = gymapi.Vec3(0.6, 0.1, 0.0)
         self.objects.cube.asset = cube_asset
         self.objects.cube.opts = cube_opts
         self.objects.cube.color = cube_color
 
         # Create gymball
+        self.objects.gymball.size = 0.6     # diameter
         gymball_opts = gymapi.AssetOptions()
         gymball_opts.density = 9
         gymball_opts.disable_gravity = False
-        gymball_asset = self.gym.create_sphere(self.sim, self.gymball_size * 0.5, gymball_opts)
+        gymball_asset = self.gym.create_sphere(self.sim, self.objects.gymball.size * 0.5, gymball_opts)
         gymball_color = gymapi.Vec3(0.3, 0.1, 0.6)
         self.objects.gymball.asset = gymball_asset
         self.objects.gymball.opts = gymball_opts
         self.objects.gymball.color = gymball_color
 
         # Create bottle asset
+        self.objects.bottle.size = 0.0  # maybe height?
         bottle_opts = gymapi.AssetOptions()
         self.objects.bottle.opts = bottle_opts
         self.objects.bottle.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["bottle"],
@@ -687,14 +686,15 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         self._ball_state = self._root_state[:, self.objects.gymball.id, :]
         self._cube_state = self._root_state[:, self.objects.cube.id, :]
-        self._target_obj_state = self._root_state[:, self.objects.gymball.id:self.objects.cube.id + 1, :]
+        self._bottle_state = self._root_state[:, self.objects.bottle.id, :]
+        self._target_obj_state = self._root_state[:, self.objects.gymball.id:self.objects.bottle.id + 1, :]
         self._object_idx_vec = torch.ones(self.num_envs, device=self.device, dtype=torch.long) * -1
         self._object_size_vec = torch.zeros(self.num_envs, device=self.device)
 
         # Initialize states, always bbox size
         self.states.update({
-            "cube_size": torch.ones_like(self._l_eef_state[:, 0]) * self.cube_size,
-            "ball_size": torch.ones_like(self._l_eef_state[:, 0]) * self.gymball_size,
+            "cube_size": torch.ones_like(self._l_eef_state[:, 0]) * self.objects.cube.size,
+            "ball_size": torch.ones_like(self._l_eef_state[:, 0]) * self.objects.gymball.size,
             "object_size_vec": torch.ones_like(self._l_eef_state[:, 0]),    # Initial object size as 1.0
         })
 
@@ -735,7 +735,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         l_hand_contact_n_mag = F.normalize(self._l_contact_forces[:, self.ids_for_hand_contact], p=2, dim=-1)
         r_hand_contact_n_mag = F.normalize(self._r_contact_forces[:, self.ids_for_hand_contact], p=2, dim=-1)
 
-        obj_goal_offset = torch.tensor([0.3, 0.0, max(self.gymball_size, 0.4)], device=self.device)
+        obj_goal_offset = torch.tensor([0.3, 0.0, max(self.objects.gymball.size, 0.4)], device=self.device)
 
         self.states.update({
             # Left Allegro UR3
@@ -760,6 +760,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
             # Cube
             "cube_quat": self._cube_state[:, 3:7],
             "cube_pos": self._cube_state[:, :3],
+            "cube_pos_vel": self._cube_state[:, 7:10],
+            "cube_rot_vel": self._cube_state[:, 10:],
             "cube_pos_relative_left_hand": self._cube_state[:, :3] - self._l_eef_state[:, :3],
             "cube_pos_relative_right_hand": self._cube_state[:, :3] - self._r_eef_state[:, :3],
             # Ball
@@ -805,8 +807,12 @@ class BimanualDexCatchUR3Allegro(VecTask):
             obs = ["cube_quat", "cube_pos", "l_eef_pos", "l_eef_quat", "r_eef_pos", "r_eef_quat"]
         else:
             # 4 + 3 + 3 + 3 + 6 + 6 + 3 + 3 + 16 + 16
-            obs = ["object_quat", "object_pos", "object_pos_vel", "object_rot_vel", "l_q", "r_q",
-                   "object_pos_relative_left_hand", "object_pos_relative_right_hand"]     # ["cube_quat", "cube_pos", "l_q", "r_q"]
+            # obs = ["object_quat", "object_pos", "object_pos_vel", "object_rot_vel", "l_q", "r_q",
+            #        "object_pos_relative_left_hand", "object_pos_relative_right_hand"]
+            obs = ["ball_quat", "cube_quat", "ball_pos", "cube_pos", "ball_pos_vel", "cube_pos_vel",
+                   "ball_rot_vel", "cube_rot_vel", "l_q", "r_q",
+                   "ball_pos_relative_left_hand", "cube_pos_relative_left_hand",
+                   "ball_pos_relative_right_hand", "cube_pos_relative_right_hand"]
         obs += ["l_q_finger"] + ["r_q_finger"]
 
         self.obs_buf = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
@@ -818,14 +824,17 @@ class BimanualDexCatchUR3Allegro(VecTask):
     def reset_idx(self, env_ids):
         env_ids_int32 = env_ids.to(dtype=torch.int32)
 
-        rand_obj = torch.randint(low=self.objects.gymball.id, high=self.objects.cube.id + 1, size=(len(env_ids),))
-        _balls = torch.where(rand_obj == self.objects.gymball.id)[0]
+        rand_obj = torch.randint(low=self.objects.gymball.id, high=self.objects.bottle.id + 1, size=(len(env_ids),))
+        _gymballs = torch.where(rand_obj == self.objects.gymball.id)[0]
         _cubes = torch.where(rand_obj == self.objects.cube.id)[0]
-        self._object_idx_vec[env_ids[_balls]] = self.objects.gymball.id
+        _bottles = torch.where(rand_obj == self.objects.bottle.id)[0]
+        self._object_idx_vec[env_ids[_gymballs]] = self.objects.gymball.id
         self._object_idx_vec[env_ids[_cubes]] = self.objects.cube.id
+        self._object_idx_vec[env_ids[_bottles]] = self.objects.bottle.id
 
-        self._object_size_vec[env_ids[_balls]] = self.gymball_size
-        self._object_size_vec[env_ids[_cubes]] = self.cube_size
+        self._object_size_vec[env_ids[_gymballs]] = self.objects.gymball.size
+        self._object_size_vec[env_ids[_cubes]] = self.objects.cube.size
+        self._object_size_vec[env_ids[_bottles]] = self.objects.bottle.size
 
         # Reset cube
         # if not self._i:
@@ -840,9 +849,11 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         self._ball_state[env_ids] = zero_state(self._init_object_state[env_ids], self._object_size_vec[env_ids], self.device)
         self._cube_state[env_ids] = zero_state(self._init_object_state[env_ids], self._object_size_vec[env_ids], self.device)
+        self._bottle_state[env_ids] = zero_state(self._init_object_state[env_ids], self._object_size_vec[env_ids], self.device)
 
-        self._ball_state[env_ids[_balls]] = self._init_object_state[env_ids[_balls]]
+        self._ball_state[env_ids[_gymballs]] = self._init_object_state[env_ids[_gymballs]]
         self._cube_state[env_ids[_cubes]] = self._init_object_state[env_ids[_cubes]]
+        self._bottle_state[env_ids[_bottles]] = self._init_object_state[env_ids[_bottles]]
 
         # Reset agent
         reset_noise = torch.rand((len(env_ids), self.num_allegro_ur3_dofs), device=self.device)
