@@ -432,12 +432,16 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # set object dof properties
         for tag in self.objects:
             obj_dof_props = self.gym.get_asset_dof_properties(self.objects[tag].asset)
-            if tag is "bottle":
-                print("bottle dof_prop: ", obj_dof_props)
-                for prop in obj_dof_props:
-                    prop['lower'] = 0.0
-                    prop['upper'] = 0.0
+            for prop in obj_dof_props:
+                if not prop['hasLimits']:
+                    prop['lower'] = -1e-3
+                    prop['upper'] = 1e-3
+                prop['driveMode'] = gymapi.DOF_MODE_POS
+                prop['stiffness'] = 1e-3
+                prop['damping'] = 1e-3
+                prop['velocity'] = 1e-3
             self.objects[tag].dof_prop = obj_dof_props
+        # exit()
         # self.ur3_dof_lower_limits = to_torch(self.ur3_dof_lower_limits, device=self.device)
         # self.ur3_dof_upper_limits = to_torch(self.ur3_dof_upper_limits, device=self.device)
         # self._ur3_effort_limits = to_torch(self._ur3_effort_limits, device=self.device)
