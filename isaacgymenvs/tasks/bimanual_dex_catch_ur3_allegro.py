@@ -270,8 +270,31 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # allocate object dicts
         self.objects.gymball = AttrDict()
+        self.objects.bowling = AttrDict()
         self.objects.cube = AttrDict()
         self.objects.bottle = AttrDict()
+
+        # Create gymball
+        self.objects.gymball.size = 0.6  # diameter
+        gymball_opts = gymapi.AssetOptions()
+        gymball_opts.density = 9
+        gymball_opts.disable_gravity = False
+        gymball_asset = self.gym.create_sphere(self.sim, self.objects.gymball.size * 0.5, gymball_opts)
+        gymball_color = gymapi.Vec3(0.3, 0.6, 0.1)
+        self.objects.gymball.asset = gymball_asset
+        self.objects.gymball.opts = gymball_opts
+        self.objects.gymball.color = gymball_color
+
+        # Create bowling
+        self.objects.bowling.size = 0.215  # diameter
+        bowling_opts = gymapi.AssetOptions()
+        bowling_opts.density = 192  # 1kg, 0.215 diameter
+        bowling_opts.disable_gravity = False
+        bowling_asset = self.gym.create_sphere(self.sim, self.objects.bowling.size * 0.5, bowling_opts)
+        bowling_color = gymapi.Vec3(0.3, 0.1, 0.6)
+        self.objects.bowling.asset = bowling_asset
+        self.objects.bowling.opts = bowling_opts
+        self.objects.bowling.color = bowling_color
 
         # Create cube asset
         self.objects.cube.size = 0.05
@@ -281,17 +304,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.objects.cube.asset = cube_asset
         self.objects.cube.opts = cube_opts
         self.objects.cube.color = cube_color
-
-        # Create gymball
-        self.objects.gymball.size = 0.6     # diameter
-        gymball_opts = gymapi.AssetOptions()
-        gymball_opts.density = 9
-        gymball_opts.disable_gravity = False
-        gymball_asset = self.gym.create_sphere(self.sim, self.objects.gymball.size * 0.5, gymball_opts)
-        gymball_color = gymapi.Vec3(0.3, 0.1, 0.6)
-        self.objects.gymball.asset = gymball_asset
-        self.objects.gymball.opts = gymball_opts
-        self.objects.gymball.color = gymball_color
 
         # Create bottle asset
         self.objects.bottle.size = 0.1  # maybe height?
@@ -440,13 +452,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
                 prop['damping'] = 1e-3
                 prop['velocity'] = 1e-3
             self.objects[tag].dof_prop = obj_dof_props
-        # exit()
-        # self.ur3_dof_lower_limits = to_torch(self.ur3_dof_lower_limits, device=self.device)
-        # self.ur3_dof_upper_limits = to_torch(self.ur3_dof_upper_limits, device=self.device)
-        # self._ur3_effort_limits = to_torch(self._ur3_effort_limits, device=self.device)
-        # self.ur3_dof_speed_scales = torch.ones_like(self.ur3_dof_lower_limits)
-        # self.ur3_dof_speed_scales[[6, 7, 8, 9, 10, 11]] = 0.1
-        # ur3_dof_props['effort'][6:12] = 200
 
         # Define start pose for franka
         left_ur3_start_pose = gymapi.Transform()
@@ -485,9 +490,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
         table_stand_right_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
         # Define start pose for cubes (doesn't really matter since they're get overridden during reset() anyways)
-        cube_start_pose = gymapi.Transform()
-        cube_start_pose.p = gymapi.Vec3(-1.0, 0.0, 0.0)
-        cube_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        object_lounge = gymapi.Transform()
+        object_lounge.p = gymapi.Vec3(-1.0, 0.0, 0.0)
+        object_lounge.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
         # compute aggregate size
         num_ur3_bodies = sum([self.gym.get_asset_rigid_body_count(asset) for asset in self.allegro_ur3_assets + get_assets(self.objects)])
@@ -543,20 +548,14 @@ class BimanualDexCatchUR3Allegro(VecTask):
             if self.aggregate_mode == 1:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
 
-            # Create gymball actors
-            _gymball_id = self.gym.create_actor(env_ptr, self.objects.gymball.asset, cube_start_pose, "ball", i, 2, 0)
-            self.gym.set_rigid_body_color(env_ptr, _gymball_id, 0, gymapi.MESH_VISUAL, self.objects.gymball.color)
-            self.objects.gymball.id = _gymball_id
-
-            # Create cube actors and Set Colors
-            _cube_id = self.gym.create_actor(env_ptr, self.objects.cube.asset, cube_start_pose, "cube", i, 2, 0)
-            self.gym.set_rigid_body_color(env_ptr, _cube_id, 0, gymapi.MESH_VISUAL, self.objects.cube.color)
-            self.objects.cube.id = _cube_id
-
-            # Create bottle actors
-            self._bottle_id = self.gym.create_actor(env_ptr, self.objects.bottle.asset, cube_start_pose, "bottle", i, 2, 0)
-            self.gym.set_actor_dof_properties(env_ptr, self._bottle_id, self.objects.bottle.dof_prop)
-            self.objects.bottle.id = self._bottle_id
+            # Create object actors
+            for tag in self.objects:
+                _id = self.gym.create_actor(env_ptr, self.objects[tag].asset, object_lounge, tag, i, 2, 0)
+                self.objects[tag].id = _id
+                if hasattr(self.objects[tag], 'color'):
+                    self.gym.set_rigid_body_color(env_ptr, _id, 0, gymapi.MESH_VISUAL, self.objects[tag].color)
+                if hasattr(self.objects[tag], 'dof_prop'):
+                    self.gym.set_actor_dof_properties(env_ptr, _id, self.objects[tag].dof_prop)
 
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
@@ -574,13 +573,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
             gymapi.RIGID_BODY_DISABLE_GRAVITY= 1
             gymapi.RIGID_BODY_DISABLE_SIMULATION(PhysX only)= 2
         """
-        # for env in self.envs:
-        #     rigid_body_props = self.gym.get_actor_rigid_body_properties(env, self._cube_id)
-        #     rigid_body_props[0].flags = 0
-        #     self.gym.set_actor_rigid_body_properties(env, self._cube_id, rigid_body_props, recomputeInertia=False)
-
-        # print("rigid_body_props: ", rigid_body_props)
-        # exit()
 
         # if you want to show the items of the dict, comment out the following codes
         # sorted_dict = dict(sorted(self.allegro_ur3_body_dict.items(), key=lambda item: item[1]))
