@@ -266,6 +266,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
     def _create_assets(self):
         self.asset_files_dict = {
             "bottle": "mjcf/bottle_cap/mobility.urdf",
+            "kettle": "mjcf/kettle/mobility.urdf",
         }
 
         # allocate object dicts
@@ -273,6 +274,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.objects.bowling = AttrDict()
         self.objects.cube = AttrDict()
         self.objects.bottle = AttrDict()
+        self.objects.kettle = AttrDict()
 
         # Create gymball
         self.objects.gymball.size = 0.6  # diameter
@@ -311,6 +313,13 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.objects.bottle.opts = bottle_opts
         self.objects.bottle.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["bottle"],
                                                         self.objects.bottle.opts)
+
+        # Create kettle asset
+        self.objects.kettle.size = 0.1
+        kettle_opts = gymapi.AssetOptions()
+        self.objects.kettle.opts = kettle_opts
+        self.objects.kettle.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["kettle"],
+                                                        self.objects.kettle.opts)
 
         self.num_objs = len(get_assets(self.objects))
 
@@ -704,7 +713,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
         _r_mm = gymtorch.wrap_tensor(_r_massmatrix)
         self._r_mm = _r_mm[:, :6, :6]
 
-        self._target_obj_state = self._root_state[:, self.objects.gymball.id:self.objects.bottle.id + 1, :]
+        first_id = self.objects[list(self.objects.keys())[0]].id
+        last_id = self.objects[list(self.objects.keys())[-1]].id + 1
+        self._target_obj_state = self._root_state[:, first_id:last_id, :]
         self._object_idx_vec = torch.ones(self.num_envs, device=self.device, dtype=torch.long) * -1
         self._object_size_vec = torch.zeros(self.num_envs, device=self.device)
 
@@ -880,8 +891,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._qd[env_ids, :] = torch.zeros_like(self._qd[env_ids])
 
         # Reset the objects' dofs
-        self._obj_q[env_ids, :] = to_torch([0.0, 0.0], device=self.device)
-        self._obj_qd[env_ids, :] = to_torch([0.0, 0.0], device=self.device)
+        self._obj_q[env_ids, :] = to_torch([0.0 for _ in range(self.num_obj_dofs)], device=self.device)
+        self._obj_qd[env_ids, :] = to_torch([0.0 for _ in range(self.num_obj_dofs)], device=self.device)
         # print("obj_q: ", self._obj_q[env_ids, :])
 
         # Set any position control to the current position, and any vel / effort control to be 0
