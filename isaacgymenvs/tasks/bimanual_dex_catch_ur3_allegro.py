@@ -367,7 +367,23 @@ class BimanualDexCatchUR3Allegro(VecTask):
         print("num ur3 bodies: ", self.num_allegro_ur3_bodies)
         print("num ur3 dofs: ", self.num_allegro_ur3_dofs)
 
-        # set franka dof properties
+        """
+        DOF Properties
+        Name        |   Data type       |   Description
+        ==========================================================
+        hasLimits       bool                Whether the DOF has limits or has unlimited motion.
+        lower           float32             Lower limit.
+        upper           float32             Upper limit.
+        driveMode       gymapi.DofDriveMode DOF drive mode, see below.
+        stiffness       float32             Drive stiffness.
+        damping         float32             Drive damping.
+        velocity        float32             Maximum velocity.
+        effort          float32             Maximum effort (force or torque).
+        friction        float32             DOF friction.
+        armature        float32             DOF armature.
+        """
+
+        # set robot dof properties
         self.left_allegro_ur3_dof_lower_limits = []
         self.left_allegro_ur3_dof_upper_limits = []
         self.left_allegro_ur3_effort_limits = []
@@ -413,6 +429,15 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.left_allegro_ur3_dof_upper_limits, self.right_allegro_ur3_dof_upper_limits = self._dof_upper_limits
         self.left_allegro_ur3_effort_limits, self.right_allegro_ur3_effort_limits = self._dof_effort_limits
 
+        # set object dof properties
+        for tag in self.objects:
+            obj_dof_props = self.gym.get_asset_dof_properties(self.objects[tag].asset)
+            if tag is "bottle":
+                print("bottle dof_prop: ", obj_dof_props)
+                for prop in obj_dof_props:
+                    prop['lower'] = 0.0
+                    prop['upper'] = 0.0
+            self.objects[tag].dof_prop = obj_dof_props
         # self.ur3_dof_lower_limits = to_torch(self.ur3_dof_lower_limits, device=self.device)
         # self.ur3_dof_upper_limits = to_torch(self.ur3_dof_upper_limits, device=self.device)
         # self._ur3_effort_limits = to_torch(self._ur3_effort_limits, device=self.device)
@@ -527,6 +552,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
             # Create bottle actors
             self._bottle_id = self.gym.create_actor(env_ptr, self.objects.bottle.asset, cube_start_pose, "bottle", i, 2, 0)
+            self.gym.set_actor_dof_properties(env_ptr, self._bottle_id, self.objects.bottle.dof_prop)
             self.objects.bottle.id = self._bottle_id
             # TODO, object material?
 
@@ -874,8 +900,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._qd[env_ids, :] = torch.zeros_like(self._qd[env_ids])
 
         # Reset the objects' dofs
-        self._obj_q[env_ids, :] = to_torch([0, 0], device=self.device)
-        self._obj_qd[env_ids, :] = to_torch([0, 0], device=self.device)
+        self._obj_q[env_ids, :] = to_torch([0.0, 0.0], device=self.device)
+        self._obj_qd[env_ids, :] = to_torch([0.0, 0.0], device=self.device)
+        # print("obj_q: ", self._obj_q[env_ids, :])
 
         # Set any position control to the current position, and any vel / effort control to be 0
         # NOTE: Task takes care of actually propagating these controls in sim using the SimActions API
