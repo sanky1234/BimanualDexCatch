@@ -155,8 +155,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._object_size_vec = None            # Sizes of each object
 
         self._obj_ref_id = None
-        self._ball_state = None  # Current state of ball for the current env
-        self._cube_state = None                # Current state of cube for the current env
 
         # Tensor placeholders
         self._root_state = None             # State of root body        (n_envs, 13)
@@ -271,8 +269,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         }
 
         # allocate object dicts
-        self.objects.cube = AttrDict()
         self.objects.gymball = AttrDict()
+        self.objects.cube = AttrDict()
         self.objects.bottle = AttrDict()
 
         # Create cube asset
@@ -296,7 +294,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.objects.gymball.color = gymball_color
 
         # Create bottle asset
-        self.objects.bottle.size = 0.0  # maybe height?
+        self.objects.bottle.size = 0.1  # maybe height?
         bottle_opts = gymapi.AssetOptions()
         self.objects.bottle.opts = bottle_opts
         self.objects.bottle.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["bottle"],
@@ -433,9 +431,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
         for tag in self.objects:
             obj_dof_props = self.gym.get_asset_dof_properties(self.objects[tag].asset)
             for prop in obj_dof_props:
-                if not prop['hasLimits']:
-                    prop['lower'] = -1e-3
-                    prop['upper'] = 1e-3
+                # if not prop['hasLimits']:
+                # lock the object dofs
+                prop['lower'] = -1e-3
+                prop['upper'] = 1e-3
                 prop['driveMode'] = gymapi.DOF_MODE_POS
                 prop['stiffness'] = 1e-3
                 prop['damping'] = 1e-3
@@ -558,7 +557,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
             self._bottle_id = self.gym.create_actor(env_ptr, self.objects.bottle.asset, cube_start_pose, "bottle", i, 2, 0)
             self.gym.set_actor_dof_properties(env_ptr, self._bottle_id, self.objects.bottle.dof_prop)
             self.objects.bottle.id = self._bottle_id
-            # TODO, object material?
 
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
@@ -714,9 +712,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
         _r_mm = gymtorch.wrap_tensor(_r_massmatrix)
         self._r_mm = _r_mm[:, :6, :6]
 
-        self._ball_state = self._root_state[:, self.objects.gymball.id, :]
-        self._cube_state = self._root_state[:, self.objects.cube.id, :]
-        self._bottle_state = self._root_state[:, self.objects.bottle.id, :]
         self._target_obj_state = self._root_state[:, self.objects.gymball.id:self.objects.bottle.id + 1, :]
         self._object_idx_vec = torch.ones(self.num_envs, device=self.device, dtype=torch.long) * -1
         self._object_size_vec = torch.zeros(self.num_envs, device=self.device)
@@ -767,6 +762,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         obj_goal_offset = torch.tensor([0.3, 0.0, max(self.objects.gymball.size, 0.4)], device=self.device)
 
+        _gymball = self.objects['gymball'].id - self._obj_ref_id
+        _cube = self.objects['cube'].id - self._obj_ref_id
+
         self.states.update({
             # Left Allegro UR3
             "l_q": self._l_q[:, :6],
@@ -788,19 +786,19 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "left_right_relative_hand_pos": self._l_eef_state[:, :3] - self._r_eef_state[:, :3],
             "object_goal_pos": (self._l_base_state[:, :3] + self._r_base_state[:, :3]) * 0.5 + obj_goal_offset,
             # Cube
-            "cube_quat": self._cube_state[:, 3:7],
-            "cube_pos": self._cube_state[:, :3],
-            "cube_pos_vel": self._cube_state[:, 7:10],
-            "cube_rot_vel": self._cube_state[:, 10:],
-            "cube_pos_relative_left_hand": self._cube_state[:, :3] - self._l_eef_state[:, :3],
-            "cube_pos_relative_right_hand": self._cube_state[:, :3] - self._r_eef_state[:, :3],
+            "cube_quat": self._target_obj_state[:, _cube, 3:7],
+            "cube_pos": self._target_obj_state[:, _cube, :3],
+            "cube_pos_vel": self._target_obj_state[:, _cube, 7:10],
+            "cube_rot_vel": self._target_obj_state[:, _cube, 10:],
+            "cube_pos_relative_left_hand": self._target_obj_state[:, _cube, :3] - self._l_eef_state[:, :3],
+            "cube_pos_relative_right_hand": self._target_obj_state[:, _cube, :3] - self._r_eef_state[:, :3],
             # Ball
-            "ball_quat": self._ball_state[:, 3:7],
-            "ball_pos": self._ball_state[:, :3],
-            "ball_pos_vel": self._ball_state[:, 7:10],
-            "ball_rot_vel": self._ball_state[:, 10:],
-            "ball_pos_relative_left_hand": self._ball_state[:, :3] - self._l_eef_state[:, :3],
-            "ball_pos_relative_right_hand": self._ball_state[:, :3] - self._r_eef_state[:, :3],
+            "ball_quat": self._target_obj_state[:, _gymball, 3:7],
+            "ball_pos": self._target_obj_state[:, _gymball, :3],
+            "ball_pos_vel": self._target_obj_state[:, _gymball, 7:10],
+            "ball_rot_vel": self._target_obj_state[:, _gymball, 10:],
+            "ball_pos_relative_left_hand": self._target_obj_state[:, _gymball, :3] - self._l_eef_state[:, :3],
+            "ball_pos_relative_right_hand": self._target_obj_state[:, _gymball, :3] - self._r_eef_state[:, :3],
             # Target Object
             "object_idx_vec": self._object_idx_vec - self._obj_ref_id,  # making id starts from 0
             "object_size_vec": self._object_size_vec,
@@ -854,36 +852,22 @@ class BimanualDexCatchUR3Allegro(VecTask):
     def reset_idx(self, env_ids):
         env_ids_int32 = env_ids.to(dtype=torch.int32)
 
-        rand_obj = torch.randint(low=self.objects.gymball.id, high=self.objects.bottle.id + 1, size=(len(env_ids),))
-        _gymballs = torch.where(rand_obj == self.objects.gymball.id)[0]
-        _cubes = torch.where(rand_obj == self.objects.cube.id)[0]
-        _bottles = torch.where(rand_obj == self.objects.bottle.id)[0]
-        self._object_idx_vec[env_ids[_gymballs]] = self.objects.gymball.id
-        self._object_idx_vec[env_ids[_cubes]] = self.objects.cube.id
-        self._object_idx_vec[env_ids[_bottles]] = self.objects.bottle.id
-
-        self._object_size_vec[env_ids[_gymballs]] = self.objects.gymball.size
-        self._object_size_vec[env_ids[_cubes]] = self.objects.cube.size
-        self._object_size_vec[env_ids[_bottles]] = self.objects.bottle.size
-
-        # Reset cube
-        # if not self._i:
-        # self._reset_init_cube_state(cube='A', env_ids=env_ids)
         self._reset_init_object_state(obj='A', env_ids=env_ids)
-        # self._i = True
 
-        # TODO, target object change!
-        # Write these new init states to the sim states
-        # self._ball_state[env_ids] = self._init_object_state[env_ids, self._ball_id - self._obj_ref_id]
-        # self._cube_state[env_ids] = self._init_object_state[env_ids, self._cube_id - self._obj_ref_id]
+        first_id = self.objects[list(self.objects.keys())[0]].id
+        last_id = self.objects[list(self.objects.keys())[-1]].id + 1
+        rand_obj = torch.randint(low=first_id, high=last_id, size=(len(env_ids),))
+        for tag in self.objects:
+            # set object indices
+            _selects = torch.where(rand_obj == self.objects[tag].id)[0]
+            self._object_idx_vec[env_ids[_selects]] = self.objects[tag].id
+            self._object_size_vec[env_ids[_selects]] = self.objects[tag].size
 
-        self._ball_state[env_ids] = zero_state(self._init_object_state[env_ids], self._object_size_vec[env_ids], self.device)
-        self._cube_state[env_ids] = zero_state(self._init_object_state[env_ids], self._object_size_vec[env_ids], self.device)
-        self._bottle_state[env_ids] = zero_state(self._init_object_state[env_ids], self._object_size_vec[env_ids], self.device)
-
-        self._ball_state[env_ids[_gymballs]] = self._init_object_state[env_ids[_gymballs]]
-        self._cube_state[env_ids[_cubes]] = self._init_object_state[env_ids[_cubes]]
-        self._bottle_state[env_ids[_bottles]] = self._init_object_state[env_ids[_bottles]]
+            # set actual states
+            _ref_id = self.objects[tag].id - self._obj_ref_id
+            self._target_obj_state[env_ids, _ref_id, :] = zero_state(self._init_object_state[env_ids],
+                                                                     self._object_size_vec[env_ids], self.device)
+            self._target_obj_state[env_ids[_selects], _ref_id, :] = self._init_object_state[env_ids[_selects]]
 
         # Reset agent
         reset_noise = torch.rand((len(env_ids), self.num_allegro_ur3_dofs), device=self.device)
@@ -963,8 +947,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Initialize rotation, which is no rotation (quat w = 1)
         sampled_obj_state[:, 6] = 1.0
-        # sampled_cube_state[:, :2] = biased_cube_xy_state.unsqueeze(0) + \
-        #                             2.0 * self.start_position_noise * (torch.rand(num_resets, 2, device=self.device) - 0.5)
         sampled_obj_state[:, :2] = biased_obj_xy_state.unsqueeze(0) + torch.cat([
             0.5 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5),
             2.0 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5)
@@ -986,68 +968,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         this_object_state_all[env_ids, 7:10] = 1.0 * torch.tensor([5.0, 2.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
         this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7]) - 1.0
         this_object_state_all[env_ids, 9] = torch.abs(this_object_state_all[env_ids, 9]) + 1.0
-        this_object_state_all[env_ids, 10:] = 1.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
-
-    def _reset_init_cube_state(self, cube, env_ids):
-        """
-        Simple method to sample @cube's position based on self.startPositionNoise and self.startRotationNoise, and
-        automaticlly reset the pose internally. Populates the appropriate self._init_cubeX_state
-
-        If @check_valid is True, then this will also make sure that the sampled position is not in contact with the
-        other cube.
-
-        Args:
-            cube(str): Which cube to sample location for. Either 'A' or 'B'
-            env_ids (tensor or None): Specific environments to reset cube for
-            check_valid (bool): Whether to make sure sampled position is collision-free with the other cube.
-        """
-        # If env_ids is None, we reset all the envs
-        if env_ids is None:
-            env_ids = torch.arange(start=0, end=self.num_envs, device=self.device, dtype=torch.long)
-
-        # Initialize buffer to hold sampled values
-        num_resets = len(env_ids)
-        sampled_cube_state = torch.zeros(num_resets, 13, device=self.device)
-
-        # Get correct references depending on which one was selected
-        if cube.lower() == 'a':
-            this_cube_state_all = self._init_object_state
-            cube_heights = self.states["cube_size"]
-        else:
-            raise ValueError(f"Invalid cube specified, options are 'A' and 'B'; got: {cube}")
-
-        # Sampling is "centered" around middle of table
-        # centered_cube_xy_state = torch.tensor(self._table_surface_pos[:2], device=self.device, dtype=torch.float32)
-        biased_cube_xy_state = torch.tensor(self._throw_start_pos[:2], device=self.device, dtype=torch.float32)
-
-        # Set z value, which is fixed height
-        sampled_cube_state[:, 2] = self._table_surface_pos[2] + cube_heights.squeeze(-1)[env_ids] / 2
-
-        # Initialize rotation, which is no rotation (quat w = 1)
-        sampled_cube_state[:, 6] = 1.0
-        # sampled_cube_state[:, :2] = biased_cube_xy_state.unsqueeze(0) + \
-        #                             2.0 * self.start_position_noise * (torch.rand(num_resets, 2, device=self.device) - 0.5)
-        sampled_cube_state[:, :2] = biased_cube_xy_state.unsqueeze(0) + torch.cat([
-            0.5 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5),
-            2.0 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5)
-        ], dim=-1)
-
-        sampled_cube_state[:, 2] = torch.tensor([1.5], device=self.device) + \
-                                   2.0 * self.start_position_noise * (torch.rand(num_resets, device=self.device) - 0.5)
-
-        # Sample rotation value
-        if self.start_rotation_noise > 0:
-            aa_rot = torch.zeros(num_resets, 3, device=self.device)
-            aa_rot[:, 2] = 2.0 * self.start_rotation_noise * (torch.rand(num_resets, device=self.device) - 0.5)
-            sampled_cube_state[:, 3:7] = quat_mul(axisangle2quat(aa_rot), sampled_cube_state[:, 3:7])
-
-        # Lastly, set these sampled values as the new init state
-        this_cube_state_all[env_ids, :] = sampled_cube_state
-
-        # linear/angular velocity randomization, m/s, radian/s
-        this_cube_state_all[env_ids, 7:10] = 1.0 * torch.tensor([5.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
-        this_cube_state_all[env_ids, 7] = -torch.abs(this_cube_state_all[env_ids, 7])
-        this_cube_state_all[env_ids, 10:] = 1.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        this_object_state_all[env_ids, 10:] = 10.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
 
     def _compute_osc_torques(self, dpose):
         """
