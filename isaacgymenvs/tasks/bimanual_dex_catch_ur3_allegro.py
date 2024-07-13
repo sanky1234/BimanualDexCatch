@@ -134,7 +134,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # dimensions
         # obs if osc: cube_pose (7) + eef_pose (7) + fingers (16) = 30
         # obs if joint: cube_pose (7) + joints (6) + fingers (16) = 29
-        self.cfg["env"]["numObservations"] = 30 if self.control_type == "osc" else 57
+        self.cfg["env"]["numObservations"] = 30 if self.control_type == "osc" else 135
 
         # actions if osc: delta EEF if OSC (6) + finger torques (16) = 22
         # actions if joint: joint torques (6) + finger torques (16) = 22
@@ -280,8 +280,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.objects.gymball = AttrDict()
         self.objects.bowling = AttrDict()
         self.objects.cube = AttrDict()
-        self.objects.bottle = AttrDict()
         self.objects.kettle = AttrDict()
+        self.objects.bottle = AttrDict()
         self.objects.cup = AttrDict()
         self.objects.banana = AttrDict()
 
@@ -355,7 +355,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
             cup_opts.override_inertia = True
             cup_opts.use_mesh_materials = True
             cup_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            cup_opts.vhacd_enabled = True
+            # cup_opts.vhacd_enabled = True
             self.objects.cup.opts = cup_opts
             self.objects.cup.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["cup"],
                                                          self.objects.cup.opts)

@@ -202,6 +202,11 @@ def launch_rlg_hydra(cfg: DictConfig):
 
         return runner
 
+    # for multi-gpu train
+    if cfg['multi_gpu']:
+        os.environ['MASTER_ADDR'] = 'localhost'
+        os.environ['MASTER_PORT'] = '12355'
+
     # convert CLI arguments into dictionary
     # create runner and set the settings
     runner = build_runner(MultiObserver(observers))
