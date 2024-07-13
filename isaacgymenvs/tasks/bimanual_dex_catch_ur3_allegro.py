@@ -266,8 +266,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
     def _create_assets(self):
         self.asset_files_dict = {
             "bottle": "mjcf/bottle_cap/bottle.urdf",
-            "kettle": "mjcf/kettle/mobility.urdf",
-            "cup": "mjcf/cup/mobility.urdf",
+            "kettle": "mjcf/kettle/kettle.urdf",
+            "cup": "mjcf/cup/cup.urdf",
 
             # YCB dataset
             "banana": "urdf/ycb/011_banana/011_banana.urdf"
@@ -277,13 +277,13 @@ class BimanualDexCatchUR3Allegro(VecTask):
         Allocate object dictionaries.
         Comment out the corresponding line if you want to exclude an object.
         """
-        # self.objects.gymball = AttrDict()
-        # self.objects.bowling = AttrDict()
-        # self.objects.cube = AttrDict()
+        self.objects.gymball = AttrDict()
+        self.objects.bowling = AttrDict()
+        self.objects.cube = AttrDict()
         self.objects.bottle = AttrDict()
-        # self.objects.kettle = AttrDict()
-        # self.objects.cup = AttrDict()
-        # self.objects.banana = AttrDict()
+        self.objects.kettle = AttrDict()
+        self.objects.cup = AttrDict()
+        self.objects.banana = AttrDict()
 
         if hasattr(self.objects, 'gymball'):
             # Create gymball
