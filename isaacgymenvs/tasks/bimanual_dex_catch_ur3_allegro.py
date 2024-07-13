@@ -26,6 +26,9 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 import time
+
+import cv2
+
 from ..utils.utils import AttrDict
 
 import numpy as np
@@ -60,8 +63,8 @@ def get_indices_from_dict(dictionary, keys):
 def zero_state(ref_tensor: torch.tensor, obj_size_vec, device):
     # (N, 13) [x, y, z, xq, yq, zq, w, xd, yd, zd, rxd, ryd, rzd]
     _tensor = torch.zeros_like(ref_tensor, device=device)
-    _tensor[:, 2] = torch.clamp(obj_size_vec, max=0.5)
-    _tensor[:, 6] = 1.0
+    _tensor[:, :, 2] = torch.clamp(obj_size_vec.unsqueeze(-1).repeat(1, _tensor.shape[1]), max=0.5)
+    _tensor[:, :, 6] = 1.0
     return _tensor
 
 
@@ -200,6 +203,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._object_shift_count = None     # object count per env for object category shift
         self._object_ids = None             # Tensor containing object ids
 
+        self.debug_btn = False
         self.debug_viz = self.cfg["env"]["enableDebugVis"]
 
         self.up_axis = "z"
@@ -613,7 +617,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
             # Create object actors
             for tag in self.objects:
-                _id = self.gym.create_actor(env_ptr, self.objects[tag].asset, object_lounge, tag, i, 0, 0)
+                _id = self.gym.create_actor(env_ptr, self.objects[tag].asset, object_lounge, tag, i, 2, 0)
                 self.objects[tag].id = _id
                 if hasattr(self.objects[tag], 'color'):
                     self.gym.set_rigid_body_color(env_ptr, _id, 0, gymapi.MESH_VISUAL, self.objects[tag].color)
@@ -629,6 +633,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # init object ids
         first_id = self.objects[list(self.objects.keys())[0]].id
         self._obj_ref_id = first_id
+
+        id_size_dict = {b.id: b.size for b in self.objects.values()}
+        self.obj_id_size_keys = to_torch(list(id_size_dict.keys()), device=self.device)
+        self.obj_id_size_values = to_torch(list(id_size_dict.values()))
 
         self.allegro_ur3_body_dict = self.gym.get_actor_rigid_body_dict(env_ptr, self._left_ur3_id)
         """
@@ -839,20 +847,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
             # Bimanual states
             "left_right_relative_hand_pos": self._l_eef_state[:, :3] - self._r_eef_state[:, :3],
             "object_goal_pos": (self._l_base_state[:, :3] + self._r_base_state[:, :3]) * 0.5 + obj_goal_offset,
-            # # Cube
-            # "cube_quat": self._target_obj_state[:, _cube, 3:7],
-            # "cube_pos": self._target_obj_state[:, _cube, :3],
-            # "cube_pos_vel": self._target_obj_state[:, _cube, 7:10],
-            # "cube_rot_vel": self._target_obj_state[:, _cube, 10:],
-            # "cube_pos_relative_left_hand": self._target_obj_state[:, _cube, :3] - self._l_eef_state[:, :3],
-            # "cube_pos_relative_right_hand": self._target_obj_state[:, _cube, :3] - self._r_eef_state[:, :3],
-            # # Ball
-            # "ball_quat": self._target_obj_state[:, _gymball, 3:7],
-            # "ball_pos": self._target_obj_state[:, _gymball, :3],
-            # "ball_pos_vel": self._target_obj_state[:, _gymball, 7:10],
-            # "ball_rot_vel": self._target_obj_state[:, _gymball, 10:],
-            # "ball_pos_relative_left_hand": self._target_obj_state[:, _gymball, :3] - self._l_eef_state[:, :3],
-            # "ball_pos_relative_right_hand": self._target_obj_state[:, _gymball, :3] - self._r_eef_state[:, :3],
             # Target Object
             "object_idx_vec": self._object_idx_vec - self._obj_ref_id,  # making id starts from 0
             "object_size_vec": self._object_size_vec,
@@ -891,20 +885,18 @@ class BimanualDexCatchUR3Allegro(VecTask):
             # 6 + 6 + 16 + 16 + num_obj x (4 + 3 + 3 + 3)
             obs = ["l_q", "r_q", "l_q_finger", "r_q_finger", "object_pos", "object_quat",
                    "object_pos_relative_left_hand", "object_pos_relative_right_hand"]
-            # obs = ["ball_quat", "cube_quat", "ball_pos", "cube_pos", "ball_pos_vel", "cube_pos_vel",
-            #        "ball_rot_vel", "cube_rot_vel", "l_q", "r_q",
-            #        "ball_pos_relative_left_hand", "cube_pos_relative_left_hand",
-            #        "ball_pos_relative_right_hand", "cube_pos_relative_right_hand"]
         # obs += ["l_q_finger"] + ["r_q_finger"]
 
         self.obs_buf = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
+
+        # TODO, should be removed later..
         if torch.any(torch.isnan(self.obs_buf)):
             nan_indices = torch.where(torch.isnan(self.obs_buf))
             print("prev_obs_buf: ", self.prev_obs_buf[nan_indices])
             print("obs_buf: ", self.obs_buf[nan_indices])
             raise ValueError(f"obs_buf tensor contains NaN values at indices: {nan_indices}")
-
         self.prev_obs_buf = self.obs_buf
+
         # maxs = {ob: torch.max(self.states[ob]).item() for ob in obs}
 
         return self.obs_buf
@@ -912,22 +904,23 @@ class BimanualDexCatchUR3Allegro(VecTask):
     def reset_idx(self, env_ids):
         env_ids_int32 = env_ids.to(dtype=torch.int32)
 
-        self._reset_init_object_state(obj='A', env_ids=env_ids)
+        # Reset all objects to their origin in environments marked for reset
+        self._target_obj_state[env_ids, :, :] = zero_state(self._target_obj_state[env_ids],
+                                                           self._object_size_vec[env_ids], self.device).clone()
 
+        # Get random indices for the next object
         first_id = self.objects[list(self.objects.keys())[0]].id
         last_id = self.objects[list(self.objects.keys())[-1]].id + 1
-        rand_obj = torch.randint(low=first_id, high=last_id, size=(len(env_ids),))
-        for tag in self.objects:
-            # set object indices
-            _selects = torch.where(rand_obj == self.objects[tag].id)[0]
-            self._object_idx_vec[env_ids[_selects]] = self.objects[tag].id
-            self._object_size_vec[env_ids[_selects]] = self.objects[tag].size
+        rand_obj_ids = torch.randint(low=first_id, high=last_id, size=(len(env_ids),), device=self.device)
 
-            # set actual states
-            _ref_id = self.objects[tag].id - self._obj_ref_id
-            self._target_obj_state[env_ids, _ref_id, :] = zero_state(self._init_object_state[env_ids],
-                                                                     self._object_size_vec[env_ids], self.device).clone()
-            self._target_obj_state[env_ids[_selects], _ref_id, :] = self._init_object_state[env_ids[_selects]].clone()
+        self._object_idx_vec[env_ids] = rand_obj_ids
+        indices = torch.searchsorted(self.obj_id_size_keys, rand_obj_ids)
+        self._object_size_vec[env_ids] = self.obj_id_size_values[indices]
+
+        self._reset_init_object_state(obj='A', env_ids=env_ids)
+
+        _rand_obj_ids = rand_obj_ids - self._obj_ref_id
+        self._target_obj_state[env_ids, _rand_obj_ids] = self._init_object_state[env_ids]
 
         # Reset agent
         reset_noise = torch.rand((len(env_ids), self.num_allegro_ur3_dofs), device=self.device)
@@ -1063,6 +1056,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
         return u
 
     def pre_physics_step(self, actions):
+        cv2.imshow("step by press", np.zeros((100, 100, 1)))
+        key = cv2.waitKey(int(not self.debug_btn))
+        if key == ord('d'): self.debug_btn = not self.debug_btn
+
         mask = torch.zeros_like(actions)
         # mask[:, 0] = 1.0
         self.actions = actions.clone().to(self.device)
@@ -1094,6 +1091,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(env_ids) > 0:
+            print("env_ids: ", env_ids)
             self.reset_idx(env_ids)
 
         self.compute_observations()
@@ -1205,11 +1203,15 @@ def compute_franka_reward(
 
     # Compute resets
     # drop_reset = (states["cube_pos"][:, 2] < -0.05) | (states["cubeB_pos"][:, 2] < -0.05)
-    # rs = torch.where(object_height < object_size / 2 + 1e-2, torch.ones_like(reset_buf), reset_buf)
-    # if rs[-1] > 0:
-    #     s = "ball" if object_idx[-1] == 0 else "cube"
-    #     print("reset!!, obj: {}, temp_pos: {} - 1.025(table) = height: {}, size: {} ".format(s, temp_pos[-1], object_height[-1], object_size[-1]))
+    rs = torch.where(object_height < object_size / 2 + 1e-2, torch.ones_like(reset_buf), reset_buf)
+    if rs[-1] > 0:
+        d = {0: "gymbal", 1: "bowling", 2: "cube", 3: "kettle", 4: "bottle", 5: "cup", 6: "banana"}
+        s = d[object_idx[-1].item()]
+        print("reset!!, obj: {}, temp_pos: {} - 1.025(table) = height: {}, size: {} ".format(s, temp_pos[-1], object_height[-1], object_size[-1]))
+        print("reset_buf: ", reset_buf[-1])
     reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size / 2 + 1e-2),
                             torch.ones_like(reset_buf), reset_buf)
+    if rs[-1] > 0:
+        print("[after] reset_buf: ", reset_buf[-1])
 
     return rewards, reset_buf
