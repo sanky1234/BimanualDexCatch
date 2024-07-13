@@ -64,6 +64,7 @@ def zero_state(ref_tensor: torch.tensor, obj_size_vec, device):
     # (N, 13) [x, y, z, xq, yq, zq, w, xd, yd, zd, rxd, ryd, rzd]
     _tensor = torch.zeros_like(ref_tensor, device=device)
     _tensor[:, :, 2] = torch.clamp(obj_size_vec.unsqueeze(-1).repeat(1, _tensor.shape[1]), max=0.5)
+    # _tensor[:, :, 2] = 0.5
     _tensor[:, :, 6] = 1.0
     return _tensor
 
@@ -636,7 +637,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         id_size_dict = {b.id: b.size for b in self.objects.values()}
         self.obj_id_size_keys = to_torch(list(id_size_dict.keys()), device=self.device)
-        self.obj_id_size_values = to_torch(list(id_size_dict.values()))
+        self.obj_id_size_values = to_torch(list(id_size_dict.values()), device=self.device)
 
         self.allegro_ur3_body_dict = self.gym.get_actor_rigid_body_dict(env_ptr, self._left_ur3_id)
         """
@@ -889,13 +890,13 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         self.obs_buf = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
 
-        # TODO, should be removed later..
-        if torch.any(torch.isnan(self.obs_buf)):
-            nan_indices = torch.where(torch.isnan(self.obs_buf))
-            print("prev_obs_buf: ", self.prev_obs_buf[nan_indices])
-            print("obs_buf: ", self.obs_buf[nan_indices])
-            raise ValueError(f"obs_buf tensor contains NaN values at indices: {nan_indices}")
-        self.prev_obs_buf = self.obs_buf
+        # # TODO, should be removed later..
+        # if torch.any(torch.isnan(self.obs_buf)):
+        #     nan_indices = torch.where(torch.isnan(self.obs_buf))
+        #     print("prev_obs_buf: ", self.prev_obs_buf[nan_indices])
+        #     print("obs_buf: ", self.obs_buf[nan_indices])
+        #     raise ValueError(f"obs_buf tensor contains NaN values at indices: {nan_indices}")
+        # self.prev_obs_buf = self.obs_buf
 
         # maxs = {ob: torch.max(self.states[ob]).item() for ob in obs}
 
@@ -906,7 +907,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Reset all objects to their origin in environments marked for reset
         self._target_obj_state[env_ids, :, :] = zero_state(self._target_obj_state[env_ids],
-                                                           self._object_size_vec[env_ids], self.device).clone()
+                                                           self._object_size_vec[env_ids], self.device)
 
         # Get random indices for the next object
         first_id = self.objects[list(self.objects.keys())[0]].id
@@ -987,7 +988,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # Get correct references depending on which one was selected
         if obj.lower() == 'a':
             this_object_state_all = self._init_object_state
-            obj_size = self.states["object_size_vec"]
+            obj_size = self._object_size_vec
         else:
             raise ValueError(f"Invalid cube specified, options are 'A' and 'B'; got: {obj}")
 
@@ -1133,7 +1134,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 #####################################################################
 
 
-# @torch.jit.script
+@torch.jit.script
 def compute_franka_reward(
     reset_buf, progress_buf, actions, _l_qd, _r_qd, states, reward_settings, max_episode_length
 ):
@@ -1202,16 +1203,7 @@ def compute_franka_reward(
                - reward_settings["act_penalty_scale"] * action_penalty)
 
     # Compute resets
-    # drop_reset = (states["cube_pos"][:, 2] < -0.05) | (states["cubeB_pos"][:, 2] < -0.05)
-    rs = torch.where(object_height < object_size / 2 + 1e-2, torch.ones_like(reset_buf), reset_buf)
-    if rs[-1] > 0:
-        d = {0: "gymbal", 1: "bowling", 2: "cube", 3: "kettle", 4: "bottle", 5: "cup", 6: "banana"}
-        s = d[object_idx[-1].item()]
-        print("reset!!, obj: {}, temp_pos: {} - 1.025(table) = height: {}, size: {} ".format(s, temp_pos[-1], object_height[-1], object_size[-1]))
-        print("reset_buf: ", reset_buf[-1])
     reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size / 2 + 1e-2),
                             torch.ones_like(reset_buf), reset_buf)
-    if rs[-1] > 0:
-        print("[after] reset_buf: ", reset_buf[-1])
 
     return rewards, reset_buf
