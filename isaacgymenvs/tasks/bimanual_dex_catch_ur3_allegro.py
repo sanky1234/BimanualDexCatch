@@ -273,22 +273,42 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "bottle": "mjcf/bottle_cap/bottle.urdf",
             "kettle": "mjcf/kettle/kettle.urdf",
             "cup": "mjcf/cup/cup.urdf",
+            "bucket": "mjcf/bucket/bucket.urdf",
+            "pen": "mjcf/pen/pen.urdf",
+            "pot": "mjcf/pot/pot.urdf",
+            "scissors": "mjcf/scissors/10495/scissors.urdf",
 
             # YCB dataset
-            "banana": "urdf/ycb/011_banana/011_banana.urdf"
+            "banana": "urdf/ycb/011_banana/011_banana.urdf",
+            "meat_can": "urdf/ycb/010_potted_meat_can/010_potted_meat_can.urdf",
+            "mug": "urdf/ycb/025_mug/025_mug.urdf",
+            "brick": "urdf/ycb/061_foam_brick/061_foam_brick.urdf",
         }
 
         """
         Allocate object dictionaries.
         Comment out the corresponding line if you want to exclude an object.
         """
+
+        # Primitive objects
         self.objects.gymball = AttrDict()
         self.objects.bowling = AttrDict()
         self.objects.cube = AttrDict()
+
+        # Home objects
         self.objects.kettle = AttrDict()
         self.objects.bottle = AttrDict()
-        self.objects.cup = AttrDict()
+        # self.objects.cup = AttrDict()
+        # self.objects.bucket = AttrDict()
+        # self.objects.pen = AttrDict()
+        # self.objects.pot = AttrDict()
+        self.objects.scissors = AttrDict()
+
+        # YCB objects
         self.objects.banana = AttrDict()
+        # self.objects.meat_can = AttrDict()
+        # self.objects.mug = AttrDict()
+        # self.objects.brick = AttrDict()
 
         if hasattr(self.objects, 'gymball'):
             # Create gymball
@@ -365,6 +385,62 @@ class BimanualDexCatchUR3Allegro(VecTask):
             self.objects.cup.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["cup"],
                                                          self.objects.cup.opts)
 
+        if hasattr(self.objects, 'bucket'):
+            # Create bucket asset
+            self.objects.bucket.size = 0.2
+            bucket_opts = gymapi.AssetOptions()
+            # bucket_opts.density = 500
+            bucket_opts.override_com = True
+            bucket_opts.override_inertia = True
+            bucket_opts.use_mesh_materials = True
+            bucket_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
+            # cup_opts.vhacd_enabled = True
+            self.objects.bucket.opts = bucket_opts
+            self.objects.bucket.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["bucket"],
+                                                            self.objects.bucket.opts)
+
+        if hasattr(self.objects, 'pen'):
+            # Create pen asset
+            self.objects.pen.size = 0.2
+            pen_opts = gymapi.AssetOptions()
+            # cup_opts.density = 500
+            pen_opts.override_com = True
+            pen_opts.override_inertia = True
+            pen_opts.use_mesh_materials = True
+            pen_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
+            # cup_opts.vhacd_enabled = True
+            self.objects.pen.opts = pen_opts
+            self.objects.pen.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["pen"],
+                                                         self.objects.pen.opts)
+
+        if hasattr(self.objects, 'pot'):
+            # Create pot asset
+            self.objects.pot.size = 0.2
+            pot_opts = gymapi.AssetOptions()
+            # pot_opts.density = 500
+            pot_opts.override_com = True
+            pot_opts.override_inertia = True
+            pot_opts.use_mesh_materials = True
+            pot_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
+            # cup_opts.vhacd_enabled = True
+            self.objects.pot.opts = pot_opts
+            self.objects.pot.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["pot"],
+                                                         self.objects.pot.opts)
+
+        if hasattr(self.objects, 'scissors'):
+            # Create scissors asset
+            self.objects.scissors.size = 0.2
+            scissors_opts = gymapi.AssetOptions()
+            # scissors_opts.density = 500
+            scissors_opts.override_com = True
+            scissors_opts.override_inertia = True
+            scissors_opts.use_mesh_materials = True
+            scissors_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
+            # cup_opts.vhacd_enabled = True
+            self.objects.scissors.opts = scissors_opts
+            self.objects.scissors.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["scissors"],
+                                                              self.objects.scissors.opts)
+
         if hasattr(self.objects, 'banana'):
             # Create banana asset
             self.objects.banana.size = 0.1
@@ -377,6 +453,45 @@ class BimanualDexCatchUR3Allegro(VecTask):
             self.objects.banana.opts = banana_opts
             self.objects.banana.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["banana"],
                                                             self.objects.banana.opts)
+
+        if hasattr(self.objects, 'meat_can'):
+            # Create meat_can asset
+            self.objects.meat_can.size = 0.1
+            meat_can_opts = gymapi.AssetOptions()
+            # meat_can_opts.density = 500
+            meat_can_opts.override_com = True
+            meat_can_opts.override_inertia = True
+            meat_can_opts.use_mesh_materials = True
+            meat_can_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
+            self.objects.meat_can.opts = meat_can_opts
+            self.objects.meat_can.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["meat_can"],
+                                                              self.objects.meat_can.opts)
+
+        if hasattr(self.objects, 'mug'):
+            # Create mug asset
+            self.objects.mug.size = 0.1
+            mug_opts = gymapi.AssetOptions()
+            # mug_opts.density = 500
+            mug_opts.override_com = True
+            mug_opts.override_inertia = True
+            mug_opts.use_mesh_materials = True
+            mug_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
+            self.objects.mug.opts = mug_opts
+            self.objects.mug.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["mug"],
+                                                         self.objects.mug.opts)
+
+        if hasattr(self.objects, 'brick'):
+            # Create brick asset
+            self.objects.brick.size = 0.1
+            brick_opts = gymapi.AssetOptions()
+            # brick_opts.density = 500
+            brick_opts.override_com = True
+            brick_opts.override_inertia = True
+            brick_opts.use_mesh_materials = True
+            brick_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
+            self.objects.brick.opts = brick_opts
+            self.objects.brick.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["brick"],
+                                                           self.objects.brick.opts)
 
         self.num_objs = len(get_assets(self.objects))
 
@@ -911,9 +1026,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
         last_id = self.objects[list(self.objects.keys())[-1]].id + 1
         rand_obj_ids = torch.randint(low=first_id, high=last_id, size=(len(env_ids),), device=self.device)
 
-        self._object_idx_vec[env_ids] = rand_obj_ids
+        self._object_idx_vec[env_ids] = rand_obj_ids.clone()
         indices = torch.searchsorted(self.obj_id_size_keys, rand_obj_ids)
-        self._object_size_vec[env_ids] = self.obj_id_size_values[indices]
+        self._object_size_vec[env_ids] = self.obj_id_size_values[indices].clone()
 
         self._reset_init_object_state(obj='A', env_ids=env_ids)
 

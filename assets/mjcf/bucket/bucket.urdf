@@ -1,0 +1,154 @@
+<?xml version="1.0" ?>
+<robot name="partnet_59d99d0a2b385fe81b1a00a31bfed97b">
+    <link name="combined_link">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <mass value="0.5"/>
+            <inertia ixx="0.002" ixy="0.0" ixz="0.0" iyy="0.002" iyz="0.0" izz="0.002"/>
+        </inertial>
+        <visual name="handle-1">
+            <origin xyz="0 -0.48305199267419374 -0.02847403130494055"/>
+            <geometry>
+                <mesh filename="textured_objs/original-7.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <visual name="base_body-2-1">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-4.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <visual name="base_body-2-2">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-3.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <visual name="base_body-2-3">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-2.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <visual name="base_body-2-4">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-8.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <visual name="base_body-2-5">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-13.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <visual name="base_body-2-6">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-5.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <visual name="base_body-2-7">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-6.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <visual name="base_body-2-8">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-11.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <visual name="base_body-2-9">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-1.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <visual name="base_body-2-10">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-10.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <visual name="base_body-2-11">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-14.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </visual>
+        <collision name="collision-1">
+            <origin xyz="0 -0.48305199267419374 -0.02847403130494055"/>
+            <geometry>
+                <mesh filename="textured_objs/original-7.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+        <collision name="collision-2">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-4.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+        <collision name="collision-3">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-3.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+        <collision name="collision-4">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-2.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+        <collision name="collision-5">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-8.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+        <collision name="collision-6">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-13.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+        <collision name="collision-7">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-5.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+        <collision name="collision-8">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-6.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+        <collision name="collision-9">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-11.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+        <collision name="collision-10">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-1.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+        <collision name="collision-11">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-10.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+        <collision name="collision-12">
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="textured_objs/original-14.obj" scale="0.1 0.1 0.1"/>
+            </geometry>
+        </collision>
+    </link>
+</robot>
