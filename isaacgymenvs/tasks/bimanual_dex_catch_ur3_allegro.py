@@ -384,8 +384,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
                     else:
                         raise ValueError(f"Unknown shape: {shape}")
 
-            if "color" in params:
-                self.objects[obj].color = gymapi.Vec3(*params["color"])
+                if "color" in params:
+                    self.objects[obj].color = gymapi.Vec3(*params["color"])
 
         self.num_objs = len(get_assets(self.objects))
 
