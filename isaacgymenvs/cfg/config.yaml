@@ -5,7 +5,7 @@ task_name: ${task.name}
 experiment: ''
 
 # if set to positive integer, overrides the default number of environments
-num_envs: 4096
+num_envs: 8192
 
 # seed - set to -1 to choose random seed
 seed: 42
@@ -13,17 +13,17 @@ seed: 42
 torch_deterministic: False
 
 # set the maximum number of learning iterations to train for. overrides default per-environment setting
-max_iterations: 20000
+max_iterations: 50000
 
 ## Device config
 #  'physx' or 'flex'
 physics_engine: 'physx'
 # whether to use cpu or gpu pipeline
-pipeline: 'cpu'
+pipeline: 'gpu'
 # device for running physics simulation
-sim_device: 'cuda:0'
+sim_device: 'cuda:1'
 # device to run RL
-rl_device: 'cuda:0'
+rl_device: 'cuda:1'
 graphics_device_id: 0
 
 ## PhysX arguments

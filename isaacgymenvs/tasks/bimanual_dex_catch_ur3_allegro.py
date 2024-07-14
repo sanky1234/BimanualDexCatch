@@ -138,7 +138,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # dimensions
         # obs if osc: cube_pose (7) + eef_pose (7) + fingers (16) = 30
         # obs if joint: cube_pose (7) + joints (6) + fingers (16) = 29
-        self.cfg["env"]["numObservations"] = 30 if self.control_type == "osc" else 135
+        self.cfg["env"]["numObservations"] = 30 if self.control_type == "osc" else 149
 
         # actions if osc: delta EEF if OSC (6) + finger torques (16) = 22
         # actions if joint: joint torques (6) + finger torques (16) = 22
@@ -825,9 +825,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         obj_goal_offset = torch.tensor([0.3, 0.0, 0.4], device=self.device)
 
-        # _gymball = self.objects['gymball'].id - self._obj_ref_id
-        # _cube = self.objects['cube'].id - self._obj_ref_id
-
         self.states.update({
             # Left Allegro UR3
             "l_q": self._l_q[:, :6],
@@ -886,7 +883,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
             # 6 + 6 + 16 + 16 + num_obj x (4 + 3 + 3 + 3)
             obs = ["l_q", "r_q", "l_q_finger", "r_q_finger", "object_pos", "object_quat",
                    "object_pos_relative_left_hand", "object_pos_relative_right_hand"]
-        # obs += ["l_q_finger"] + ["r_q_finger"]
+        obs += ["l_eef_pos"] + ["l_eef_quat"] + ["r_eef_pos"] + ["r_eef_quat"]
 
         self.obs_buf = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
 
@@ -907,7 +904,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Reset all objects to their origin in environments marked for reset
         self._target_obj_state[env_ids, :, :] = zero_state(self._target_obj_state[env_ids],
-                                                           self._object_size_vec[env_ids], self.device)
+                                                           self._object_size_vec[env_ids], self.device).clone()
 
         # Get random indices for the next object
         first_id = self.objects[list(self.objects.keys())[0]].id
@@ -921,7 +918,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._reset_init_object_state(obj='A', env_ids=env_ids)
 
         _rand_obj_ids = rand_obj_ids - self._obj_ref_id
-        self._target_obj_state[env_ids, _rand_obj_ids] = self._init_object_state[env_ids]
+        self._target_obj_state[env_ids, _rand_obj_ids] = self._init_object_state[env_ids].clone()
 
         # Reset agent
         reset_noise = torch.rand((len(env_ids), self.num_allegro_ur3_dofs), device=self.device)
@@ -1057,9 +1054,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
         return u
 
     def pre_physics_step(self, actions):
-        cv2.imshow("step by press", np.zeros((100, 100, 1)))
-        key = cv2.waitKey(int(not self.debug_btn))
-        if key == ord('d'): self.debug_btn = not self.debug_btn
+        # cv2.imshow("step by press", np.zeros((100, 100, 1)))
+        # key = cv2.waitKey(int(not self.debug_btn))
+        # if key == ord('d'): self.debug_btn = not self.debug_btn
 
         mask = torch.zeros_like(actions)
         # mask[:, 0] = 1.0
@@ -1092,7 +1089,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(env_ids) > 0:
-            print("env_ids: ", env_ids)
             self.reset_idx(env_ids)
 
         self.compute_observations()
