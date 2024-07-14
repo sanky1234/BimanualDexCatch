@@ -277,8 +277,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "pen": "mjcf/pen/pen.urdf",
             "pot": "mjcf/pot/pot.urdf",
             "scissors": "mjcf/scissors/10495/scissors.urdf",
-
-            # YCB dataset
             "banana": "urdf/ycb/011_banana/011_banana.urdf",
             "meat_can": "urdf/ycb/010_potted_meat_can/010_potted_meat_can.urdf",
             "mug": "urdf/ycb/025_mug/025_mug.urdf",
@@ -290,208 +288,104 @@ class BimanualDexCatchUR3Allegro(VecTask):
         Comment out the corresponding line if you want to exclude an object.
         """
 
-        # Primitive objects
-        self.objects.gymball = AttrDict()
-        self.objects.bowling = AttrDict()
-        self.objects.cube = AttrDict()
+        objects_to_create = [
+            "gymball",
+            "bowling",
+            "cube",
 
-        # Home objects
-        self.objects.kettle = AttrDict()
-        self.objects.bottle = AttrDict()
-        # self.objects.cup = AttrDict()
-        # self.objects.bucket = AttrDict()
-        # self.objects.pen = AttrDict()
-        # self.objects.pot = AttrDict()
-        self.objects.scissors = AttrDict()
+            "kettle",
+            "bottle",
+            "cup",
+            # "bucket",
+            # "pen",
+            # "pot",
+            # "scissors",
 
-        # YCB objects
-        self.objects.banana = AttrDict()
-        # self.objects.meat_can = AttrDict()
-        # self.objects.mug = AttrDict()
-        # self.objects.brick = AttrDict()
+            "banana",
+            # "meat_can",
+            # "mug",
+            # "brick"
+        ]
 
-        if hasattr(self.objects, 'gymball'):
-            # Create gymball
-            self.objects.gymball.size = 0.6  # diameter
-            gymball_opts = gymapi.AssetOptions()
-            gymball_opts.density = 9
-            gymball_opts.disable_gravity = False
-            gymball_asset = self.gym.create_sphere(self.sim, self.objects.gymball.size * 0.5, gymball_opts)
-            gymball_color = gymapi.Vec3(0.3, 0.6, 0.1)
-            self.objects.gymball.asset = gymball_asset
-            self.objects.gymball.opts = gymball_opts
-            self.objects.gymball.color = gymball_color
+        for obj in objects_to_create:
+            setattr(self.objects, obj, AttrDict())
 
-        if hasattr(self.objects, 'bowling'):
-            # Create bowling
-            self.objects.bowling.size = 0.215  # diameter
-            bowling_opts = gymapi.AssetOptions()
-            bowling_opts.density = 192  # 1kg, 0.215 diameter
-            bowling_opts.disable_gravity = False
-            bowling_asset = self.gym.create_sphere(self.sim, self.objects.bowling.size * 0.5, bowling_opts)
-            bowling_color = gymapi.Vec3(0.3, 0.1, 0.6)
-            self.objects.bowling.asset = bowling_asset
-            self.objects.bowling.opts = bowling_opts
-            self.objects.bowling.color = bowling_color
+        asset_creation_params = {
+            "gymball": {"shape": "sphere",
+                        "size": 0.6,
+                        "color": (0.3, 0.6, 0.1),
+                        "opts": {"density": 9, "disable_gravity": False}},
+            "bowling": {"shape": "sphere",
+                        "size": 0.215,
+                        "color": (0.3, 0.1, 0.6),
+                        "opts": {"density": 192, "disable_gravity": False}},
+            "cube": {"shape": "box",
+                     "size": 0.05,
+                     "color": (0.6, 0.1, 0.0),
+                     "opts": {}},
 
-        if hasattr(self.objects, 'cube'):
-            # Create cube asset
-            self.objects.cube.size = 0.05
-            cube_opts = gymapi.AssetOptions()
-            cube_asset = self.gym.create_box(self.sim, *([self.objects.cube.size] * 3), cube_opts)
-            cube_color = gymapi.Vec3(0.6, 0.1, 0.0)
-            self.objects.cube.asset = cube_asset
-            self.objects.cube.opts = cube_opts
-            self.objects.cube.color = cube_color
+            "bottle": {"size": 0.2,
+                       "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
+                                "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
+            "kettle": {"size": 0.2,
+                       "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
+                                "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
+            "cup": {"size": 0.2,
+                    "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
+                             "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
+            "bucket": {"size": 0.2,
+                       "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
+                                "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
+            "pen": {"size": 0.2,
+                    "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
+                             "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
+            "pot": {"size": 0.2,
+                    "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
+                             "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
+            "scissors": {"size": 0.2,
+                         "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
+                                  "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
 
-        if hasattr(self.objects, 'bottle'):
-            # Create bottle asset
-            self.objects.bottle.size = 0.2  # maybe height?
-            bottle_opts = gymapi.AssetOptions()
-            # bottle_opts.density = 500
-            bottle_opts.override_com = True
-            bottle_opts.override_inertia = True
-            bottle_opts.use_mesh_materials = True
-            bottle_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            # bottle_opts.vhacd_enabled = True
-            self.objects.bottle.opts = bottle_opts
-            self.objects.bottle.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["bottle"],
-                                                            self.objects.bottle.opts)
+            "banana": {"size": 0.1,
+                       "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
+                                "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
+            "meat_can": {"size": 0.1,
+                         "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
+                                  "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
+            "mug": {"size": 0.1,
+                    "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
+                             "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
+            "brick": {"size": 0.1,
+                      "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
+                               "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}}
+        }
 
-        if hasattr(self.objects, 'kettle'):
-            # Create kettle asset
-            self.objects.kettle.size = 0.2
-            kettle_opts = gymapi.AssetOptions()
-            # kettle_opts.density = 500
-            kettle_opts.override_com = True
-            kettle_opts.override_inertia = True
-            kettle_opts.use_mesh_materials = True
-            kettle_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            self.objects.kettle.opts = kettle_opts
-            self.objects.kettle.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["kettle"],
-                                                            self.objects.kettle.opts)
+        for obj, params in asset_creation_params.items():
+            if hasattr(self.objects, obj):
+                self.objects[obj].size = params["size"]
+                opts = gymapi.AssetOptions()
+                for key, value in params["opts"].items():
+                    setattr(opts, key, value)
+                if obj in self.asset_files_dict:
+                    self.objects[obj].opts = opts
+                    self.objects[obj].asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict[obj], opts)
+                else:
+                    shape = params.get("shape", None)
+                    if shape == "sphere":
+                        self.objects[obj].asset = self.gym.create_sphere(self.sim, self.objects[obj].size * 0.5, opts)
+                    elif shape == "box":
+                        self.objects[obj].asset = self.gym.create_box(self.sim, *([self.objects[obj].size] * 3), opts)
+                    elif shape == "capsule":
+                        if isinstance(self.objects[obj].size, list) and len(self.objects[obj].size) == 2:
+                            radius, length = self.objects[obj].size
+                            self.objects[obj].asset = self.gym.create_capsule(self.sim, radius, length, opts)
+                        else:
+                            raise ValueError(f"Size for capsule must be a list of two elements: [radius, length].")
+                    else:
+                        raise ValueError(f"Unknown shape: {shape}")
 
-        if hasattr(self.objects, 'cup'):
-            # Create cup asset
-            self.objects.cup.size = 0.2
-            cup_opts = gymapi.AssetOptions()
-            # cup_opts.density = 500
-            cup_opts.override_com = True
-            cup_opts.override_inertia = True
-            cup_opts.use_mesh_materials = True
-            cup_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            # cup_opts.vhacd_enabled = True
-            self.objects.cup.opts = cup_opts
-            self.objects.cup.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["cup"],
-                                                         self.objects.cup.opts)
-
-        if hasattr(self.objects, 'bucket'):
-            # Create bucket asset
-            self.objects.bucket.size = 0.2
-            bucket_opts = gymapi.AssetOptions()
-            # bucket_opts.density = 500
-            bucket_opts.override_com = True
-            bucket_opts.override_inertia = True
-            bucket_opts.use_mesh_materials = True
-            bucket_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            # cup_opts.vhacd_enabled = True
-            self.objects.bucket.opts = bucket_opts
-            self.objects.bucket.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["bucket"],
-                                                            self.objects.bucket.opts)
-
-        if hasattr(self.objects, 'pen'):
-            # Create pen asset
-            self.objects.pen.size = 0.2
-            pen_opts = gymapi.AssetOptions()
-            # cup_opts.density = 500
-            pen_opts.override_com = True
-            pen_opts.override_inertia = True
-            pen_opts.use_mesh_materials = True
-            pen_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            # cup_opts.vhacd_enabled = True
-            self.objects.pen.opts = pen_opts
-            self.objects.pen.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["pen"],
-                                                         self.objects.pen.opts)
-
-        if hasattr(self.objects, 'pot'):
-            # Create pot asset
-            self.objects.pot.size = 0.2
-            pot_opts = gymapi.AssetOptions()
-            # pot_opts.density = 500
-            pot_opts.override_com = True
-            pot_opts.override_inertia = True
-            pot_opts.use_mesh_materials = True
-            pot_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            # cup_opts.vhacd_enabled = True
-            self.objects.pot.opts = pot_opts
-            self.objects.pot.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["pot"],
-                                                         self.objects.pot.opts)
-
-        if hasattr(self.objects, 'scissors'):
-            # Create scissors asset
-            self.objects.scissors.size = 0.2
-            scissors_opts = gymapi.AssetOptions()
-            # scissors_opts.density = 500
-            scissors_opts.override_com = True
-            scissors_opts.override_inertia = True
-            scissors_opts.use_mesh_materials = True
-            scissors_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            # cup_opts.vhacd_enabled = True
-            self.objects.scissors.opts = scissors_opts
-            self.objects.scissors.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["scissors"],
-                                                              self.objects.scissors.opts)
-
-        if hasattr(self.objects, 'banana'):
-            # Create banana asset
-            self.objects.banana.size = 0.1
-            banana_opts = gymapi.AssetOptions()
-            # banana_opts.density = 500
-            banana_opts.override_com = True
-            banana_opts.override_inertia = True
-            banana_opts.use_mesh_materials = True
-            banana_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            self.objects.banana.opts = banana_opts
-            self.objects.banana.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["banana"],
-                                                            self.objects.banana.opts)
-
-        if hasattr(self.objects, 'meat_can'):
-            # Create meat_can asset
-            self.objects.meat_can.size = 0.1
-            meat_can_opts = gymapi.AssetOptions()
-            # meat_can_opts.density = 500
-            meat_can_opts.override_com = True
-            meat_can_opts.override_inertia = True
-            meat_can_opts.use_mesh_materials = True
-            meat_can_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            self.objects.meat_can.opts = meat_can_opts
-            self.objects.meat_can.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["meat_can"],
-                                                              self.objects.meat_can.opts)
-
-        if hasattr(self.objects, 'mug'):
-            # Create mug asset
-            self.objects.mug.size = 0.1
-            mug_opts = gymapi.AssetOptions()
-            # mug_opts.density = 500
-            mug_opts.override_com = True
-            mug_opts.override_inertia = True
-            mug_opts.use_mesh_materials = True
-            mug_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            self.objects.mug.opts = mug_opts
-            self.objects.mug.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["mug"],
-                                                         self.objects.mug.opts)
-
-        if hasattr(self.objects, 'brick'):
-            # Create brick asset
-            self.objects.brick.size = 0.1
-            brick_opts = gymapi.AssetOptions()
-            # brick_opts.density = 500
-            brick_opts.override_com = True
-            brick_opts.override_inertia = True
-            brick_opts.use_mesh_materials = True
-            brick_opts.mesh_normal_mode = gymapi.COMPUTE_PER_VERTEX
-            self.objects.brick.opts = brick_opts
-            self.objects.brick.asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict["brick"],
-                                                           self.objects.brick.opts)
+            if "color" in params:
+                self.objects[obj].color = gymapi.Vec3(*params["color"])
 
         self.num_objs = len(get_assets(self.objects))
 
