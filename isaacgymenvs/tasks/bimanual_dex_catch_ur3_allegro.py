@@ -138,7 +138,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # dimensions
         # obs if osc: cube_pose (7) + eef_pose (7) + fingers (16) = 30
         # obs if joint: cube_pose (7) + joints (6) + fingers (16) = 29
-        self.cfg["env"]["numObservations"] = 30 if self.control_type == "osc" else 149
+        self.cfg["env"]["numObservations"] = 30 if self.control_type == "osc" else 253
 
         # actions if osc: delta EEF if OSC (6) + finger torques (16) = 22
         # actions if joint: joint torques (6) + finger torques (16) = 22
@@ -292,19 +292,20 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "gymball",
             "bowling",
             "cube",
+            "board",
 
             "kettle",
             "bottle",
             "cup",
-            # "bucket",
-            # "pen",
-            # "pot",
-            # "scissors",
+            "bucket",
+            "pen",
+            "pot",
+            "scissors",
 
             "banana",
-            # "meat_can",
-            # "mug",
-            # "brick"
+            "meat_can",
+            "mug",
+            "brick"
         ]
 
         for obj in objects_to_create:
@@ -323,6 +324,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
                      "size": 0.05,
                      "color": (0.6, 0.1, 0.0),
                      "opts": {}},
+            "board": {"shape": "box",
+                      "size": [0.9, 0.4, 0.05],  # width, length, height
+                      "color": (0.1, 0.1, 0.6),
+                      "opts": {}},
 
             "bottle": {"size": 0.2,
                        "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
@@ -374,7 +379,12 @@ class BimanualDexCatchUR3Allegro(VecTask):
                     if shape == "sphere":
                         self.objects[obj].asset = self.gym.create_sphere(self.sim, self.objects[obj].size * 0.5, opts)
                     elif shape == "box":
-                        self.objects[obj].asset = self.gym.create_box(self.sim, *([self.objects[obj].size] * 3), opts)
+                        size = self.objects[obj].size
+                        if isinstance(size, list) and len(size) == 3:
+                            width, length, height = size
+                            self.objects[obj].asset = self.gym.create_box(self.sim, width, length, height, opts)
+                        else:
+                            self.objects[obj].asset = self.gym.create_box(self.sim, *([size] * 3), opts)
                     elif shape == "capsule":
                         if isinstance(self.objects[obj].size, list) and len(self.objects[obj].size) == 2:
                             radius, length = self.objects[obj].size
@@ -646,7 +656,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         id_size_dict = {b.id: b.size for b in self.objects.values()}
         self.obj_id_size_keys = to_torch(list(id_size_dict.keys()), device=self.device)
-        self.obj_id_size_values = to_torch(list(id_size_dict.values()), device=self.device)
+
+        id_size_list = [item for value in id_size_dict.values() for item in (value if isinstance(value, list) else [value])]
+        self.obj_id_size_values = to_torch(id_size_list, device=self.device)
+        # self.obj_id_size_values = to_torch(list(id_size_dict.values()), device=self.device)
 
         self.allegro_ur3_body_dict = self.gym.get_actor_rigid_body_dict(env_ptr, self._left_ur3_id)
         """
