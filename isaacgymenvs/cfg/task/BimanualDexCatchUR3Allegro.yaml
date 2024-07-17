@@ -24,8 +24,8 @@ env:
   actionScale: 1.0
 
   # reward scales
-  handRewardScale: 1.0
-  goalRewardScale: 0.0
+  handRewardScale: 5.0
+  goalRewardScale: 1.0
   liftRewardScale: 0.0
   sepRewardScale: 0.0
   contactRewardScale: 0.5

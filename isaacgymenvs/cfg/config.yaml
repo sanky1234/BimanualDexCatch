@@ -19,7 +19,7 @@ max_iterations: 20000
 #  'physx' or 'flex'
 physics_engine: 'physx'
 # whether to use cpu or gpu pipeline
-pipeline: 'cpu'
+pipeline: 'gpu'
 # device for running physics simulation
 sim_device: 'cuda:0'
 # device to run RL
@@ -35,7 +35,7 @@ num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one
 # test - if set, run policy in inference mode (requires setting checkpoint to load)
 test: False
 # used to set checkpoint path, full path should be provided from runs folder: (e.g., runs/model_folder/nn/model_name.pth)
-checkpoint: 'runs/BimanualDexCatchUR3Allegro_2024-07-14_14-02-18/nn/last_BimanualDexCatchUR3Allegro_2024-07-14_14-02-18_ep_5400_rew_73.5731.pth'
+checkpoint: ''
 # set sigma when restoring network
 sigma: ''
 # set to True to use multi-gpu training
@@ -61,7 +61,7 @@ headless: True
 defaults:
   - task: BimanualDexCatchUR3Allegro
   - train: ${task}PPO
-  - pbt: no_pbt
+  - pbt: no_pbt  # no_pbt, pbt_default
   - override hydra/job_logging: disabled
   - _self_
 

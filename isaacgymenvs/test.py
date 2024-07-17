@@ -32,7 +32,6 @@
 import hydra
 
 from omegaconf import DictConfig, OmegaConf
-from omegaconf import DictConfig, OmegaConf
 
 
 def preprocess_train_config(cfg, config_dict):
@@ -237,7 +236,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         return max(last_files, key=extract_episode_number, default=None)
 
     # Test Config
-    folder = 'BimanualDexCatchUR3Allegro_2024-07-16_14-03-16'
+    folder = 'BimanualDexCatchUR3Allegro_2024-07-16_16-25-49'
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64
