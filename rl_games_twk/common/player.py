@@ -8,9 +8,9 @@ import torch
 import copy
 from os.path import basename
 from typing import Optional
-from rl_games.common import vecenv
-from rl_games.common import env_configurations
-from rl_games.algos_torch import model_builder
+from rl_games_twk.common import vecenv
+from rl_games_twk.common import env_configurations
+from rl_games_twk.algos_torch import model_builder
 
 
 class BasePlayer(object):

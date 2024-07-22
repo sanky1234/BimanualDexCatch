@@ -26,9 +26,9 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from rl_games.algos_torch import torch_ext
-from rl_games.algos_torch import layers
-from rl_games.algos_torch import network_builder
+from rl_games_twk.algos_torch import torch_ext
+from rl_games_twk.algos_torch import layers
+from rl_games_twk.algos_torch import network_builder
 
 import torch
 import torch.nn as nn

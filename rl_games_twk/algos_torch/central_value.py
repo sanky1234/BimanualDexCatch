@@ -2,11 +2,11 @@ import os
 import torch
 from torch import nn
 import torch.distributed as dist
-from rl_games.algos_torch import torch_ext
-from rl_games.algos_torch.running_mean_std import RunningMeanStd, RunningMeanStdObs
-from rl_games.common  import common_losses
-from rl_games.common import datasets
-from rl_games.common import schedulers
+from rl_games_twk.algos_torch import torch_ext
+from rl_games_twk.algos_torch.running_mean_std import RunningMeanStd, RunningMeanStdObs
+from rl_games_twk.common  import common_losses
+from rl_games_twk.common import datasets
+from rl_games_twk.common import schedulers
 
 
 class CentralValueTrain(nn.Module):

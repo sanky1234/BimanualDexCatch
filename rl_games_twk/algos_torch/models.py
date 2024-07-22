@@ -1,14 +1,14 @@
-import rl_games.algos_torch.layers
+import rl_games_twk.algos_torch.layers
 import numpy as np
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
-import rl_games.common.divergence as divergence
-from rl_games.common.extensions.distributions import CategoricalMasked
+import rl_games_twk.common.divergence as divergence
+from rl_games_twk.common.extensions.distributions import CategoricalMasked
 from torch.distributions import Categorical
-from rl_games.algos_torch.sac_helper import SquashedNormal
-from rl_games.algos_torch.running_mean_std import RunningMeanStd, RunningMeanStdObs
-from rl_games.algos_torch.moving_mean_std import GeneralizedMovingStats
+from rl_games_twk.algos_torch.sac_helper import SquashedNormal
+from rl_games_twk.algos_torch.running_mean_std import RunningMeanStd, RunningMeanStdObs
+from rl_games_twk.algos_torch.moving_mean_std import GeneralizedMovingStats
 
 class BaseModel():
     def __init__(self, model_class):

@@ -1,4 +1,4 @@
-from rl_games.algos_torch import torch_ext
+from rl_games_twk.algos_torch import torch_ext
 import torch
 import torch.nn as nn
 import numpy as np

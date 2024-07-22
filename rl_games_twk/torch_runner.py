@@ -5,14 +5,14 @@ import random
 from copy import deepcopy
 import torch
 
-from rl_games.common import object_factory
-from rl_games.common import tr_helpers
+from rl_games_twk.common import object_factory
+from rl_games_twk.common import tr_helpers
 
-from rl_games.algos_torch import a2c_continuous
-from rl_games.algos_torch import a2c_discrete
-from rl_games.algos_torch import players
-from rl_games.common.algo_observer import DefaultAlgoObserver
-from rl_games.algos_torch import sac_agent
+from rl_games_twk.algos_torch import a2c_continuous
+from rl_games_twk.algos_torch import a2c_discrete
+from rl_games_twk.algos_torch import players
+from rl_games_twk.common.algo_observer import DefaultAlgoObserver
+from rl_games_twk.algos_torch import sac_agent
 
 
 def _restore(agent, args):

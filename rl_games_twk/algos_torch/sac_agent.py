@@ -1,14 +1,14 @@
-from rl_games.algos_torch import torch_ext
+from rl_games_twk.algos_torch import torch_ext
 
-from rl_games.common import vecenv
-from rl_games.common import schedulers
-from rl_games.common import experience
-from rl_games.common.a2c_common import print_statistics
+from rl_games_twk.common import vecenv
+from rl_games_twk.common import schedulers
+from rl_games_twk.common import experience
+from rl_games_twk.common.a2c_common import print_statistics
 
-from rl_games.interfaces.base_algorithm import  BaseAlgorithm
+from rl_games_twk.interfaces.base_algorithm import  BaseAlgorithm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-from rl_games.algos_torch import  model_builder
+from rl_games_twk.algos_torch import  model_builder
 from torch import optim
 import torch 
 from torch import nn

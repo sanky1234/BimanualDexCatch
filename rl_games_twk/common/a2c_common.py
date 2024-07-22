@@ -1,17 +1,17 @@
 import copy
 import os
 
-from rl_games.common import vecenv
+from rl_games_twk.common import vecenv
 
-from rl_games.algos_torch.moving_mean_std import GeneralizedMovingStats
-from rl_games.algos_torch.self_play_manager import SelfPlayManager
-from rl_games.algos_torch import torch_ext
-from rl_games.common import schedulers
-from rl_games.common.experience import ExperienceBuffer
-from rl_games.common.interval_summary_writer import IntervalSummaryWriter
-from rl_games.common.diagnostics import DefaultDiagnostics, PpoDiagnostics
-from rl_games.algos_torch import  model_builder
-from rl_games.interfaces.base_algorithm import  BaseAlgorithm
+from rl_games_twk.algos_torch.moving_mean_std import GeneralizedMovingStats
+from rl_games_twk.algos_torch.self_play_manager import SelfPlayManager
+from rl_games_twk.algos_torch import torch_ext
+from rl_games_twk.common import schedulers
+from rl_games_twk.common.experience import ExperienceBuffer
+from rl_games_twk.common.interval_summary_writer import IntervalSummaryWriter
+from rl_games_twk.common.diagnostics import DefaultDiagnostics, PpoDiagnostics
+from rl_games_twk.algos_torch import  model_builder
+from rl_games_twk.interfaces.base_algorithm import  BaseAlgorithm
 import numpy as np
 import time
 import gym
@@ -24,7 +24,7 @@ import torch.distributed as dist
  
 from time import sleep
 
-from rl_games.common import common_losses
+from rl_games_twk.common import common_losses
 
 
 def swap_and_flatten01(arr):

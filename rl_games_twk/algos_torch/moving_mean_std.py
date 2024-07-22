@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-import rl_games.algos_torch.torch_ext as torch_ext
+import rl_games_twk.algos_torch.torch_ext as torch_ext
 
 '''
 updates moving statistics with momentum

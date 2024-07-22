@@ -1,6 +1,6 @@
 import gym
 import numpy as np
-from rl_games.common.wrappers import MaskVelocityWrapper
+from rl_games_twk.common.wrappers import MaskVelocityWrapper
 
 class TestAsymmetricCritic(gym.Env):
     def __init__(self, wrapped_env_name,  **kwargs):

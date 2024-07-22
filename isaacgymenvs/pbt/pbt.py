@@ -39,8 +39,8 @@ import numpy as np
 import torch
 import yaml
 from omegaconf import DictConfig
-from rl_games.algos_torch.torch_ext import safe_filesystem_op, safe_save
-from rl_games.common.algo_observer import AlgoObserver
+from rl_games_twk.algos_torch.torch_ext import safe_filesystem_op, safe_save
+from rl_games_twk.common.algo_observer import AlgoObserver
 
 from isaacgymenvs.pbt.mutation import mutate
 from isaacgymenvs.utils.reformat import omegaconf_to_dict

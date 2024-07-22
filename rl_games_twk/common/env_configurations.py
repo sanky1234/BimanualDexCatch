@@ -1,9 +1,9 @@
-import rl_games.envs.test
-from rl_games.common import wrappers
-from rl_games.common import tr_helpers
-from rl_games.envs.brax import create_brax_env
-from rl_games.envs.envpool import create_envpool
-from rl_games.envs.cule import create_cule
+import rl_games_twk.envs.test
+from rl_games_twk.common import wrappers
+from rl_games_twk.common import tr_helpers
+from rl_games_twk.envs.brax import create_brax_env
+from rl_games_twk.envs.envpool import create_envpool
+from rl_games_twk.envs.cule import create_cule
 import gym
 from gym.wrappers import FlattenObservation, FilterObservation
 import numpy as np
@@ -76,7 +76,7 @@ def create_goal_gym_env(**kwargs):
 
 def create_slime_gym_env(**kwargs):
     import slimevolleygym
-    from rl_games.envs.slimevolley_selfplay import SlimeVolleySelfplay
+    from rl_games_twk.envs.slimevolley_selfplay import SlimeVolleySelfplay
     name = kwargs.pop('name')
     limit_steps = kwargs.pop('limit_steps', False)
     self_play = kwargs.pop('self_play', False)
@@ -87,7 +87,7 @@ def create_slime_gym_env(**kwargs):
     return env
 
 def create_connect_four_env(**kwargs):
-    from rl_games.envs.connect4_selfplay import ConnectFourSelfPlay
+    from rl_games_twk.envs.connect4_selfplay import ConnectFourSelfPlay
     name = kwargs.pop('name')
     limit_steps = kwargs.pop('limit_steps', False)
     self_play = kwargs.pop('self_play', False)
@@ -163,7 +163,7 @@ def create_roboschool_env(name):
     return gym.make(name)
 
 def create_smac(name, **kwargs):
-    from rl_games.envs.smac_env import SMACEnv
+    from rl_games_twk.envs.smac_env import SMACEnv
     frames = kwargs.pop('frames', 1)
     transpose = kwargs.pop('transpose', False)
     flatten = kwargs.pop('flatten', True)
@@ -179,7 +179,7 @@ def create_smac(name, **kwargs):
     return env
 
 def create_smac_cnn(name, **kwargs):
-    from rl_games.envs.smac_env import SMACEnv
+    from rl_games_twk.envs.smac_env import SMACEnv
     has_cv = kwargs.get('central_value', False)
     frames = kwargs.pop('frames', 4)
     transpose = kwargs.pop('transpose', False)
@@ -192,7 +192,7 @@ def create_smac_cnn(name, **kwargs):
     return env
 
 def create_test_env(name, **kwargs):
-    import rl_games.envs.test
+    import rl_games_twk.envs.test
     env = gym.make(name, **kwargs)
     return env
 
@@ -225,13 +225,13 @@ def create_minigrid_env(name, **kwargs):
     return env
 
 def create_multiwalker_env(**kwargs):
-    from rl_games.envs.multiwalker import MultiWalker
+    from rl_games_twk.envs.multiwalker import MultiWalker
     env = MultiWalker('', **kwargs) 
 
     return env
 
 def create_diambra_env(**kwargs):
-    from rl_games.envs.diambra.diambra import DiambraEnv
+    from rl_games_twk.envs.diambra.diambra import DiambraEnv
     env = DiambraEnv(**kwargs)
     return env
 

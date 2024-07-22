@@ -1,6 +1,6 @@
-from rl_games.common.ivecenv import IVecEnv
-from rl_games.common.env_configurations import configurations
-from rl_games.common.tr_helpers import dicts_to_dict_with_arrays
+from rl_games_twk.common.ivecenv import IVecEnv
+from rl_games_twk.common.env_configurations import configurations
+from rl_games_twk.common.tr_helpers import dicts_to_dict_with_arrays
 import numpy as np
 import gym
 import random
@@ -225,11 +225,11 @@ def create_vec_env(config_name, num_actors, **kwargs):
 
 register('RAY', lambda config_name, num_actors, **kwargs: RayVecEnv(config_name, num_actors, **kwargs))
 
-from rl_games.envs.brax import BraxEnv
+from rl_games_twk.envs.brax import BraxEnv
 register('BRAX', lambda config_name, num_actors, **kwargs: BraxEnv(config_name, num_actors, **kwargs))
 
-from rl_games.envs.envpool import Envpool
+from rl_games_twk.envs.envpool import Envpool
 register('ENVPOOL', lambda config_name, num_actors, **kwargs: Envpool(config_name, num_actors, **kwargs))
 
-from rl_games.envs.cule import CuleEnv
+from rl_games_twk.envs.cule import CuleEnv
 register('CULE', lambda config_name, num_actors, **kwargs: CuleEnv(config_name, num_actors, **kwargs))

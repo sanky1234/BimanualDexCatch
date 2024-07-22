@@ -26,11 +26,11 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from rl_games.algos_torch.running_mean_std import RunningMeanStd
-from rl_games.algos_torch import torch_ext
-from rl_games.common import a2c_common
-from rl_games.common import schedulers
-from rl_games.common import vecenv
+from rl_games_twk.algos_torch.running_mean_std import RunningMeanStd
+from rl_games_twk.algos_torch import torch_ext
+from rl_games_twk.common import a2c_common
+from rl_games_twk.common import schedulers
+from rl_games_twk.common import vecenv
 
 from isaacgymenvs.utils.torch_jit_utils import to_torch
 

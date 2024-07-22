@@ -1,7 +1,7 @@
-from rl_games.common import object_factory
-import rl_games.algos_torch
-from rl_games.algos_torch import network_builder
-from rl_games.algos_torch import models
+from rl_games_twk.common import object_factory
+import rl_games_twk.algos_torch
+from rl_games_twk.algos_torch import network_builder
+from rl_games_twk.algos_torch import models
 
 NETWORK_REGISTRY = {}
 MODEL_REGISTRY = {}

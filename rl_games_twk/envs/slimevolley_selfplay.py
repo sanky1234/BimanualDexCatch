@@ -2,7 +2,7 @@ import gym
 import numpy as np
 import slimevolleygym
 import yaml
-from rl_games.torch_runner import Runner
+from rl_games_twk.torch_runner import Runner
 import os
 
 class SlimeVolleySelfplay(gym.Env):
@@ -31,7 +31,7 @@ class SlimeVolleySelfplay(gym.Env):
         with open(config, 'r') as stream:
             config = yaml.safe_load(stream)
             runner = Runner()
-            from rl_games.common.env_configurations import get_env_info
+            from rl_games_twk.common.env_configurations import get_env_info
             config['params']['config']['env_info'] = get_env_info(self)
             runner.load(config)
         config = runner.get_prebuilt_config()

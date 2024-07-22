@@ -25,7 +25,7 @@ class TcnnNet(nn.Module):
         return mu, mu * 0.0 + self.sigma, value, None
 
 
-from rl_games.algos_torch.network_builder import NetworkBuilder
+from rl_games_twk.algos_torch.network_builder import NetworkBuilder
 
 
 class TcnnNetBuilder(NetworkBuilder):

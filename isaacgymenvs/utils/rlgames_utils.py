@@ -34,8 +34,8 @@ import os
 import gym
 import numpy as np
 import torch
-from rl_games.common import env_configurations, vecenv
-from rl_games.common.algo_observer import AlgoObserver
+from rl_games_twk.common import env_configurations, vecenv
+from rl_games_twk.common.algo_observer import AlgoObserver
 
 from isaacgymenvs.tasks import isaacgym_task_map
 from isaacgymenvs.utils.utils import set_seed, flatten_dict

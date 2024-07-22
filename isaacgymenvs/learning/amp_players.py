@@ -28,9 +28,9 @@
 
 import torch 
 
-from rl_games.algos_torch import torch_ext
-from rl_games.algos_torch.running_mean_std import RunningMeanStd
-from rl_games.common.player import BasePlayer
+from rl_games_twk.algos_torch import torch_ext
+from rl_games_twk.algos_torch.running_mean_std import RunningMeanStd
+from rl_games_twk.common.player import BasePlayer
 
 import isaacgymenvs.learning.common_player as common_player
 

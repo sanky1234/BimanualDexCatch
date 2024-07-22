@@ -2,10 +2,10 @@ import numpy as np
 import random
 import gym
 import torch
-from rl_games.common.segment_tree import SumSegmentTree, MinSegmentTree
+from rl_games_twk.common.segment_tree import SumSegmentTree, MinSegmentTree
 import torch
 
-from rl_games.algos_torch.torch_ext import numpy_to_torch_dtype_dict
+from rl_games_twk.algos_torch.torch_ext import numpy_to_torch_dtype_dict
 
 class ReplayBuffer(object):
     def __init__(self, size, ob_space):

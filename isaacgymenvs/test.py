@@ -89,9 +89,9 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     from isaacgymenvs.utils.rlgames_utils import RLGPUEnv, RLGPUAlgoObserver, MultiObserver, ComplexObsRLGPUEnv
     from isaacgymenvs.utils.wandb_utils import WandbAlgoObserver
-    from rl_games.common import env_configurations, vecenv
-    from rl_games.torch_runner import Runner
-    from rl_games.algos_torch import model_builder
+    from rl_games_twk.common import env_configurations, vecenv
+    from rl_games_twk.torch_runner import Runner
+    from rl_games_twk.algos_torch import model_builder
     from isaacgymenvs.learning import amp_continuous
     from isaacgymenvs.learning import amp_players
     from isaacgymenvs.learning import amp_models

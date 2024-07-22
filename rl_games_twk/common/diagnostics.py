@@ -1,5 +1,5 @@
 import torch
-import rl_games.algos_torch.torch_ext as torch_ext
+import rl_games_twk.algos_torch.torch_ext as torch_ext
 
 class DefaultDiagnostics(object):
     def __init__(self):

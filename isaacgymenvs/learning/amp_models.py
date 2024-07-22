@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import torch.nn as nn
-from rl_games.algos_torch.models import ModelA2CContinuousLogStd
+from rl_games_twk.algos_torch.models import ModelA2CContinuousLogStd
 
 
 class ModelAMPContinuous(ModelA2CContinuousLogStd):
