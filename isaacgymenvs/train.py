@@ -99,6 +99,9 @@ def launch_rlg_hydra(cfg: DictConfig):
     from isaacgymenvs.learning import amp_network_builder
     import isaacgymenvs
 
+    # for multi-agent RL
+    from isaacgymenvs.utils.marl_utils import MultiAgentRLGPUEnv
+
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_name = f"{cfg.wandb_name}_{time_str}"
 
@@ -144,7 +147,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         return envs
 
     env_configurations.register('rlgpu', {
-        'vecenv_type': 'RLGPU',
+        'vecenv_type': 'MARLGPU' if cfg.train.params.algo.name == "a2c_multi_agent" else "RLGPU",
         'env_creator': lambda **kwargs: create_isaacgym_env(**kwargs),
     })
 
@@ -162,8 +165,8 @@ def launch_rlg_hydra(cfg: DictConfig):
         
         vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: ComplexObsRLGPUEnv(config_name, num_actors, obs_spec, **kwargs))
     else:
-
         vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
+        vecenv.register('MARLGPU', lambda config_name, num_actors, **kwargs: MultiAgentRLGPUEnv(config_name, num_actors, **kwargs))
 
     # dump config dict
     if not cfg.test:

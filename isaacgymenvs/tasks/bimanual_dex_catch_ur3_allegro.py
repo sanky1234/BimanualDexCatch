@@ -42,6 +42,7 @@ import torch.nn.functional as F
 
 from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp, quat_from_euler_xyz, quat_apply
 from isaacgymenvs.tasks.base.vec_task import VecTask
+from isaacgymenvs.tasks.base.multi_vec_task import MultiVecTask
 from isaacgymenvs.tasks.utils.general_utils import deg2rad
 
 
@@ -108,6 +109,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         self.cfg = cfg
+
+        # multi-agent RL (Heterogenuous Agent)
+        self.is_multi_agent = self.cfg["env"].get("isMultiAgent", False)
 
         self.max_episode_length = self.cfg["env"]["episodeLength"]
 
@@ -211,6 +215,11 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.up_axis_idx = 2
 
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
+
+        if self.is_multi_agent:
+            self.num_multi_agents = 2
+            # Define the observations and actions of the thrower
+            self.cfg["env"]["numThrowerActions"] = 13   # initial state of the object to be thrown (pose, Xd, Rd)
 
         # UR3 defaults
         self.default_left_ur3_pose = {"forward": [deg2rad(30.0), deg2rad(-90.0), deg2rad(110.0), deg2rad(-40.0), deg2rad(90.0), deg2rad(90.0)],
