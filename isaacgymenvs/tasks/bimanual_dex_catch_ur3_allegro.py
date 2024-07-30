@@ -144,9 +144,13 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # obs if joint: cube_pose (7) + joints (6) + fingers (16) = 29
         self.cfg["env"]["numObservations"] = 30 if self.control_type == "osc" else 253
 
+        # Define the observations and actions of the thrower
+        # initial state of the object to be thrown (pose, Xd, Rd)
+        self.cfg["env"]["numThrowerActions"] = 13 if self.is_multi_agent else 0
+
         # actions if osc: delta EEF if OSC (6) + finger torques (16) = 22
         # actions if joint: joint torques (6) + finger torques (16) = 22
-        self.cfg["env"]["numActions"] = 22 if self.control_type == "osc" else 44
+        self.cfg["env"]["numActions"] = 22 if self.control_type == "osc" else 44 + self.cfg["env"]["numThrowerActions"]
 
         # Values to be filled in at runtime
         self.states = {}                        # will be dict filled with relevant states to use for reward calculation
@@ -216,10 +220,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
-        if self.is_multi_agent:
-            self.num_multi_agents = 2
-            # Define the observations and actions of the thrower
-            self.cfg["env"]["numThrowerActions"] = 13   # initial state of the object to be thrown (pose, Xd, Rd)
+        self.num_multi_agents = 2 if self.is_multi_agent else 1
+        self.num_a_actions = self.cfg["env"]["numThrowerActions"]
 
         # UR3 defaults
         self.default_left_ur3_pose = {"forward": [deg2rad(30.0), deg2rad(-90.0), deg2rad(110.0), deg2rad(-40.0), deg2rad(90.0), deg2rad(90.0)],
@@ -1095,7 +1097,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Split arm and finger command
         l_u_arm, l_u_finger = self.actions[:, :6], self.actions[:, 6:22]
-        r_u_arm, r_u_finger = self.actions[:, 22:22+6], self.actions[:, 22+6:]
+        r_u_arm, r_u_finger = self.actions[:, 22:22+6], self.actions[:, 22+6:22+6+16]
 
         # Control arm (scale value first)
         l_u_arm = l_u_arm * self.l_cmd_limit / self.action_scale

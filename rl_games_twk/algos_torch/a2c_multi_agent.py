@@ -1,22 +1,82 @@
+import copy
 
 from rl_games_twk.common.a2c_common import print_statistics, swap_and_flatten01
+from rl_games_twk.common.experience import ExperienceBuffer
 from rl_games_twk.algos_torch import torch_ext
 
+from torch import optim
 import torch
 import torch.distributed as dist
 
 import os
 import time
+from gym import spaces
 
 import numpy as np
 
 from .a2c_continuous import A2CAgent
 
 
+class OverridableDict(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def override(self, **kwargs):
+        for key, value in kwargs.items():
+            if key in self:
+                self[key] = value
+        return self
+
+
 class MultiAgentA2CAgent(A2CAgent):
     def __init__(self, base_name, params):
         super().__init__(base_name, params)
         self.num_multi_agents = self.vec_env.env.num_multi_agents
+        self.num_a_actions = self.vec_env.env.num_a_actions     # another agent's action dim.
+
+        # for Model
+        catch_build_config = OverridableDict({'actions_num': self.actions_num - self.num_a_actions,
+                                             'input_shape': self.obs_shape,
+                                             'num_seqs': self.num_actors * self.num_agents,
+                                             'value_size': self.env_info.get('value_size', 1),
+                                             'normalize_value': self.normalize_value,
+                                             'normalize_input': self.normalize_input})
+        throw_build_config = copy.deepcopy(catch_build_config)
+        self.build_configs = [catch_build_config,
+                              throw_build_config.override(actions_num=self.num_a_actions)]
+
+        # for Experience Buffer
+        self.env_info_list = [copy.deepcopy(self.env_info) for _ in range(len(self.build_configs))]
+        for env_info, config in zip(self.env_info_list, self.build_configs):
+            actions_num = config['actions_num']
+            env_info['action_space'] = spaces.Box(np.ones(actions_num) * -1., np.ones(actions_num) * 1.)
+
+        algo_info = {
+            'num_actors': self.num_actors,
+            'horizon_length': self.horizon_length,
+            'has_central_value': self.has_central_value,
+            'use_action_masks': self.use_action_masks
+        }
+
+        # generate rest of the models
+        self.models = []
+        self.exp_buffs = []
+        if self.num_multi_agents > 1:
+            # root model, exp_buffs
+            for agent_id in range(self.num_multi_agents):
+                # build other models
+                model, optim = self.build_model(self.build_configs[agent_id])
+                self.models.append(model)
+
+                # create other experience buffers
+                self.exp_buffs.append(ExperienceBuffer(self.env_info_list[agent_id], algo_info, self.ppo_device))
+
+    def build_model(self, build_config):
+        model = self.network.build(build_config)
+        model.to(self.ppo_device)
+        self.init_rnn_from_model(model)
+        optimizer = optim.Adam(model.parameters(), float(self.last_lr), eps=1e-08, weight_decay=self.weight_decay)
+        return model, optimizer
 
     def env_reset(self):
         # observations
@@ -43,27 +103,53 @@ class MultiAgentA2CAgent(A2CAgent):
 
         return obs, _state_all
 
+    def get_action_values(self, agent_id, obs):
+        processed_obs = self._preproc_obs(obs['obs'])
+        self.models[agent_id].eval()
+        input_dict = {
+            'is_train': False,
+            'prev_actions': None,
+            'obs' : processed_obs,
+            'rnn_states' : self.rnn_states
+        }
+
+        with torch.no_grad():
+            res_dict = self.models[agent_id](input_dict)
+            if self.has_central_value:
+                states = obs['states']
+                input_dict = {
+                    'is_train': False,
+                    'states' : states,
+                }
+                value = self.get_central_value(input_dict)
+                res_dict['values'] = value
+        return res_dict
+
     def play_steps(self):
         update_list = self.update_list
 
         step_time = 0.0
 
         for n in range(self.horizon_length):
-            if self.use_action_masks:
-                masks = self.vec_env.get_action_masks()
-                res_dict = self.get_masked_action_values(self.obs, masks)
-            else:
-                res_dict = self.get_action_values(self.obs)
-            self.experience_buffer.update_data('obses', n, self.obs['obs'])
-            self.experience_buffer.update_data('dones', n, self.dones)
+            res_list = []
+            for agent_id in range(self.num_multi_agents):
+                if self.use_action_masks:
+                    masks = self.vec_env.get_action_masks()
+                    res_dict = self.get_masked_action_values(self.obs, masks)
+                else:
+                    res_dict = self.get_action_values(agent_id, self.obs)
+                self.exp_buffs[agent_id].update_data('obses', n, self.obs['obs'])
+                self.exp_buffs[agent_id].update_data('dones', n, self.dones)
 
-            for k in update_list:
-                self.experience_buffer.update_data(k, n, res_dict[k])
-            if self.has_central_value:
-                self.experience_buffer.update_data('states', n, self.obs['states'])
+                res_list.append(res_dict)
+                for k in update_list:
+                    self.exp_buffs[agent_id].update_data(k, n, res_list[agent_id][k])
+                if self.has_central_value:
+                    self.exp_buffs[agent_id].update_data('states', n, self.obs['states'])
 
+            unified_actions = torch.cat([item['actions'] for item in res_list], dim=-1)
             step_time_start = time.time()
-            self.obs, rewards, self.dones, infos = self.env_step(res_dict['actions'])
+            self.obs, rewards, self.dones, infos = self.env_step(unified_actions)
             step_time_end = time.time()
 
             step_time += (step_time_end - step_time_start)
@@ -92,6 +178,7 @@ class MultiAgentA2CAgent(A2CAgent):
             self.current_shaped_rewards = self.current_shaped_rewards * not_dones.unsqueeze(1)
             self.current_lengths = self.current_lengths * not_dones
 
+        # TODO, get_values should be expanded to multi-agent
         last_values = self.get_values(self.obs)
 
         fdones = self.dones.float()
