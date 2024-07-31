@@ -904,9 +904,13 @@ class BimanualDexCatchUR3Allegro(VecTask):
         return torch.ones(self.num_envs, device=self.device, dtype=torch.long)
 
     def compute_reward(self, actions):  # TODO!
-        self.rew_buf[:], self.reset_buf[:] = compute_franka_reward(
+        self.rew_buf[:], self.reset_buf[:] = compute_catch_reward(
             self.reset_buf, self.progress_buf, self.actions, self._l_qd, self._r_qd, self.states, self.reward_settings, self.max_episode_length
         )
+        if self.num_multi_agents > 1:
+            rew_buf, reset_buf = compute_throw_reward(
+                self.reset_buf, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
+            self.rew_buf = torch.stack((self.rew_buf, rew_buf), dim=1)
 
     def compute_observations(self):
         self._refresh()
@@ -1164,7 +1168,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
 
 @torch.jit.script
-def compute_franka_reward(
+def compute_catch_reward(
     reset_buf, progress_buf, actions, _l_qd, _r_qd, states, reward_settings, max_episode_length
 ):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor]
@@ -1230,6 +1234,42 @@ def compute_franka_reward(
                + reward_settings["r_contact_scale"] * hand_contact_n_mag_mean
                - reward_settings["contact_penalty_scale"] * arm_contact_n_mag_mean
                - reward_settings["act_penalty_scale"] * action_penalty)
+
+    # Compute resets
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size / 2 + 1e-2),
+                            torch.ones_like(reset_buf), reset_buf)
+
+    return rewards, reset_buf
+
+
+@torch.jit.script
+def compute_throw_reward(
+    reset_buf, progress_buf, states, reward_settings, max_episode_length
+):
+    # type: (Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor]
+
+    object_idx = states["object_idx_vec"].type(torch.long)
+    object_size = states["object_size_vec"]
+
+    ar_idx = torch.arange(len(object_idx), dtype=torch.long)
+
+    # object height for reset_buf
+    temp_pos = states["object_pos"][ar_idx, object_idx, 2]
+    object_height = temp_pos - reward_settings["table_height"]
+
+    # throw reward calc.
+    obj_pos_vel = states["object_pos_vel"][ar_idx, object_idx, :]
+    obj_rot_vel = states["object_rot_vel"][ar_idx, object_idx, :]
+    obj_pos_vel_norm = torch.norm(obj_pos_vel, dim=-1)
+    obj_rot_vel_norm = torch.norm(obj_rot_vel, dim=-1)
+
+    obj_pos_vel_reward = torch.exp(-10.0 * obj_pos_vel_norm)
+    obj_rot_vel_reward = torch.exp(-10.0 * obj_rot_vel_norm)
+
+    obj_throw_reward = 0.5 * obj_pos_vel_reward + 0.5 * obj_rot_vel_reward
+
+    # reward_settings["r_hand_scale"]
+    rewards = (0.5 * obj_throw_reward)
 
     # Compute resets
     reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size / 2 + 1e-2),

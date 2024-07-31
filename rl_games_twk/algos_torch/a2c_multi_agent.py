@@ -71,6 +71,9 @@ class MultiAgentA2CAgent(A2CAgent):
                 # create other experience buffers
                 self.exp_buffs.append(ExperienceBuffer(self.env_info_list[agent_id], algo_info, self.ppo_device))
 
+        # Remove the unnecessary model and experience buffer that were created by the parent class.
+        del self.model
+
     def build_model(self, build_config):
         model = self.network.build(build_config)
         model.to(self.ppo_device)
@@ -103,6 +106,16 @@ class MultiAgentA2CAgent(A2CAgent):
 
         return obs, _state_all
 
+    def env_step(self, actions):
+        actions = self.preprocess_actions(actions)
+        obs, rewards, dones, infos = self.vec_env.step(actions)
+
+        if self.is_tensor_obses:
+            # value_size condition is removed..
+            return self.obs_to_tensors(obs), rewards.to(self.ppo_device), dones.to(self.ppo_device), infos
+        else:
+            return self.obs_to_tensors(obs), torch.from_numpy(rewards).to(self.ppo_device).float(), torch.from_numpy(dones).to(self.ppo_device), infos
+
     def get_action_values(self, agent_id, obs):
         processed_obs = self._preproc_obs(obs['obs'])
         self.models[agent_id].eval()
@@ -125,6 +138,44 @@ class MultiAgentA2CAgent(A2CAgent):
                 res_dict['values'] = value
         return res_dict
 
+    def set_eval(self):
+        [self.models[agent_id].eval() for agent_id in range(self.num_multi_agents)]
+        if self.normalize_rms_advantage:
+            self.advantage_mean_std.eval()
+
+    def set_train(self):
+        [self.models[agent_id].train() for agent_id in range(self.num_multi_agents)]
+        if self.normalize_rms_advantage:
+            self.advantage_mean_std.train()
+
+    def get_values(self, obs):
+        values = []
+        for agent_id in range(self.num_multi_agents):
+            with torch.no_grad():
+                if self.has_central_value:
+                    states = obs['states']
+                    self.central_value_net.eval()
+                    input_dict = {
+                        'is_train': False,
+                        'states': states,
+                        'actions': None,
+                        'is_done': self.dones,
+                    }
+                    value = self.get_central_value(input_dict)
+                else:
+                    self.models[agent_id].eval()
+                    processed_obs = self._preproc_obs(obs['obs'])
+                    input_dict = {
+                        'is_train': False,
+                        'prev_actions': None,
+                        'obs': processed_obs,
+                        'rnn_states': self.rnn_states
+                    }
+                    result = self.models[agent_id](input_dict)
+                    value = result['values']
+                    values.append(value)
+        return values
+
     def play_steps(self):
         update_list = self.update_list
 
@@ -137,8 +188,8 @@ class MultiAgentA2CAgent(A2CAgent):
                     masks = self.vec_env.get_action_masks()
                     res_dict = self.get_masked_action_values(self.obs, masks)
                 else:
-                    res_dict = self.get_action_values(agent_id, self.obs)
-                self.exp_buffs[agent_id].update_data('obses', n, self.obs['obs'])
+                    res_dict = self.get_action_values(agent_id, self.obs)   # here
+                self.exp_buffs[agent_id].update_data('obses', n, self.obs['obs'+str(agent_id) if agent_id > 0 else 'obs'])
                 self.exp_buffs[agent_id].update_data('dones', n, self.dones)
 
                 res_list.append(res_dict)
@@ -156,11 +207,13 @@ class MultiAgentA2CAgent(A2CAgent):
 
             shaped_rewards = self.rewards_shaper(rewards)
             if self.value_bootstrap and 'time_outs' in infos:
-                shaped_rewards += self.gamma * res_dict['values'] * self.cast_obs(infos['time_outs']).unsqueeze(
-                    1).float()
+                for agent_id in range(self.num_multi_agents):
+                    discounted_reward = (self.gamma * res_list[agent_id]['values'] *
+                                         self.cast_obs(infos['time_outs']).unsqueeze(1).float())
+                    shaped_rewards[:, agent_id] += discounted_reward.squeeze(1)
+                    self.exp_buffs[agent_id].update_data('rewards', n, discounted_reward)
 
-            self.experience_buffer.update_data('rewards', n, shaped_rewards)
-
+            # TODO, following codes need to be expanded to multi-agent settings
             self.current_rewards += rewards
             self.current_shaped_rewards += shaped_rewards
             self.current_lengths += 1

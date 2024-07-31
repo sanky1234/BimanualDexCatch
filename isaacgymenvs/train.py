@@ -181,6 +181,7 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     rlg_config_dict = omegaconf_to_dict(cfg.train)
     rlg_config_dict = preprocess_train_config(cfg, rlg_config_dict)
+    cfg.task.env.isMultiAgent = True if cfg.train.params.algo.name == "a2c_multi_agent" else False
 
     observers = [RLGPUAlgoObserver()]
 
