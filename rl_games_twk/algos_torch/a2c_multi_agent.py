@@ -34,6 +34,25 @@ class MultiAgentA2CAgent(A2CAgent):
         self.num_multi_agents = self.vec_env.env.num_multi_agents
         self.num_a_actions = self.vec_env.env.num_a_actions     # another agent's action dim.
 
+        self.current_rewards_list = []
+        self.current_shaped_rewards_list = []
+
+        # del self.game_rewards
+        self.game_rewards_list = []
+        self.game_shaped_rewards_list = []
+        batch_size = self.num_agents * self.num_actors
+        current_rewards_shape = (batch_size, self.value_size)
+        for agent_id in range(self.num_multi_agents):
+            curr_rew1 = torch.zeros(current_rewards_shape, dtype=torch.float32, device=self.ppo_device)
+            curr_rew2 = torch.zeros(current_rewards_shape, dtype=torch.float32, device=self.ppo_device)
+            self.current_rewards_list.append(curr_rew1)
+            self.current_shaped_rewards_list.append(curr_rew2)
+
+            avg_meter = torch_ext.AverageMeter(self.value_size, self.games_to_track).to(self.ppo_device)
+            avg_meter_shaped = torch_ext.AverageMeter(self.value_size, self.games_to_track).to(self.ppo_device)
+            self.game_rewards_list.append(avg_meter)
+            self.game_shaped_rewards_list.append(avg_meter_shaped)
+
         # for Model
         catch_build_config = OverridableDict({'actions_num': self.actions_num - self.num_a_actions,
                                              'input_shape': self.obs_shape,
@@ -198,6 +217,7 @@ class MultiAgentA2CAgent(A2CAgent):
                 if self.has_central_value:
                     self.exp_buffs[agent_id].update_data('states', n, self.obs['states'])
 
+            # Unified one-step action
             unified_actions = torch.cat([item['actions'] for item in res_list], dim=-1)
             step_time_start = time.time()
             self.obs, rewards, self.dones, infos = self.env_step(unified_actions)
@@ -214,21 +234,25 @@ class MultiAgentA2CAgent(A2CAgent):
                     self.exp_buffs[agent_id].update_data('rewards', n, discounted_reward)
 
             # TODO, following codes need to be expanded to multi-agent settings
-            self.current_rewards += rewards
-            self.current_shaped_rewards += shaped_rewards
             self.current_lengths += 1
             all_done_indices = self.dones.nonzero(as_tuple=False)
             env_done_indices = all_done_indices[::self.num_agents]
 
-            self.game_rewards.update(self.current_rewards[env_done_indices])
-            self.game_shaped_rewards.update(self.current_shaped_rewards[env_done_indices])
+            for agent_id in range(self.num_multi_agents):
+                self.current_rewards_list[agent_id] += rewards[:, agent_id].unsqueeze(-1)
+                self.current_shaped_rewards_list[agent_id] += shaped_rewards[:, agent_id].unsqueeze(-1)
+
+                self.game_rewards_list[agent_id].update(self.current_rewards_list[agent_id][env_done_indices])
+                self.game_shaped_rewards_list[agent_id].update(self.current_shaped_rewards_list[agent_id][env_done_indices])
+
             self.game_lengths.update(self.current_lengths[env_done_indices])
             self.algo_observer.process_infos(infos, env_done_indices)
 
             not_dones = 1.0 - self.dones.float()
 
-            self.current_rewards = self.current_rewards * not_dones.unsqueeze(1)
-            self.current_shaped_rewards = self.current_shaped_rewards * not_dones.unsqueeze(1)
+            for agent_id in range(self.num_multi_agents):
+                self.current_rewards_list[agent_id] = self.current_rewards_list[agent_id] * not_dones.unsqueeze(1)
+                self.current_shaped_rewards_list[agent_id] = self.current_shaped_rewards_list[agent_id] * not_dones.unsqueeze(1)
             self.current_lengths = self.current_lengths * not_dones
 
         # TODO, get_values should be expanded to multi-agent

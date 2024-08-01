@@ -903,14 +903,22 @@ class BimanualDexCatchUR3Allegro(VecTask):
     def get_all_env_ids(self):
         return torch.ones(self.num_envs, device=self.device, dtype=torch.long)
 
-    def compute_reward(self, actions):  # TODO!
-        self.rew_buf[:], self.reset_buf[:] = compute_catch_reward(
+    def compute_reward(self, actions):
+        _rew_buf, self.reset_buf[:] = compute_catch_reward(
             self.reset_buf, self.progress_buf, self.actions, self._l_qd, self._r_qd, self.states, self.reward_settings, self.max_episode_length
         )
         if self.num_multi_agents > 1:
+            if len(self.rew_buf.shape) == 1:
+                temp = self.rew_buf.clone()
+                self.rew_buf = torch.zeros(self.rew_buf.size()[0], self.num_multi_agents, device=self.device)
+                self.rew_buf[:, 0] = temp
             rew_buf, reset_buf = compute_throw_reward(
                 self.reset_buf, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
-            self.rew_buf = torch.stack((self.rew_buf, rew_buf), dim=1)
+            # self.rew_buf = torch.stack((self.rew_buf, rew_buf), dim=1)
+            self.rew_buf[:, 0] = _rew_buf
+            self.rew_buf[:, 1] = rew_buf
+        else:
+            self.rew_buf = _rew_buf
 
     def compute_observations(self):
         self._refresh()
