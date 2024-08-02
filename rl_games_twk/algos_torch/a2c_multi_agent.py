@@ -15,6 +15,7 @@ from gym import spaces
 import numpy as np
 
 from .a2c_continuous import A2CAgent
+from ..common.a2c_common import A2CBase
 
 
 class OverridableDict(dict):
@@ -258,19 +259,22 @@ class MultiAgentA2CAgent(A2CAgent):
         # TODO, get_values should be expanded to multi-agent
         last_values = self.get_values(self.obs)
 
+        batch_dict_list = []
         fdones = self.dones.float()
-        mb_fdones = self.experience_buffer.tensor_dict['dones'].float()
-        mb_values = self.experience_buffer.tensor_dict['values']
-        mb_rewards = self.experience_buffer.tensor_dict['rewards']
-        mb_advs = self.discount_values(fdones, last_values, mb_fdones, mb_values, mb_rewards)
-        mb_returns = mb_advs + mb_values
+        for agent_id in range(self.num_multi_agents):
+            mb_fdones = self.exp_buffs[agent_id].tensor_dict['dones'].float()
+            mb_values = self.exp_buffs[agent_id].tensor_dict['values']
+            mb_rewards = self.exp_buffs[agent_id].tensor_dict['rewards']
+            mb_advs = self.discount_values(fdones, last_values[agent_id], mb_fdones, mb_values, mb_rewards)
+            mb_returns = mb_advs + mb_values
 
-        batch_dict = self.experience_buffer.get_transformed_list(swap_and_flatten01, self.tensor_list)
-        batch_dict['returns'] = swap_and_flatten01(mb_returns)
-        batch_dict['played_frames'] = self.batch_size
-        batch_dict['step_time'] = step_time
+            batch_dict = self.exp_buffs[agent_id].get_transformed_list(swap_and_flatten01, self.tensor_list)
+            batch_dict['returns'] = swap_and_flatten01(mb_returns)
+            batch_dict['played_frames'] = self.batch_size
+            batch_dict['step_time'] = step_time
+            batch_dict_list.append(batch_dict)
 
-        return batch_dict
+        return batch_dict_list
 
     def play_steps_rnn(self):
         update_list = self.update_list
@@ -363,7 +367,7 @@ class MultiAgentA2CAgent(A2CAgent):
         return batch_dict
 
     def train_epoch(self):
-        super().train_epoch()
+        A2CBase.train_epoch(self)   # Grandparent class
 
         self.set_eval()
         play_time_start = time.time()
@@ -372,7 +376,7 @@ class MultiAgentA2CAgent(A2CAgent):
             if self.is_rnn:
                 batch_dict = self.play_steps_rnn()
             else:
-                batch_dict = self.play_steps()
+                batch_dict_list = self.play_steps()
 
         self.set_train()
 
