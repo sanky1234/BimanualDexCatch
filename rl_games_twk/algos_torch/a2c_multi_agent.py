@@ -3,6 +3,7 @@ import copy
 from rl_games_twk.common.a2c_common import print_statistics, swap_and_flatten01
 from rl_games_twk.common.experience import ExperienceBuffer
 from rl_games_twk.algos_torch import torch_ext
+from rl_games_twk.common import datasets
 
 from torch import optim
 import torch
@@ -34,6 +35,9 @@ class MultiAgentA2CAgent(A2CAgent):
         super().__init__(base_name, params)
         self.num_multi_agents = self.vec_env.env.num_multi_agents
         self.num_a_actions = self.vec_env.env.num_a_actions     # another agent's action dim.
+
+        self.dataset_list = [datasets.PPODataset(self.batch_size, self.minibatch_size, self.is_discrete, self.is_rnn,
+                                                 self.ppo_device, self.seq_length) for _ in range(self.num_multi_agents)]
 
         self.current_rewards_list = []
         self.current_shaped_rewards_list = []
@@ -196,6 +200,67 @@ class MultiAgentA2CAgent(A2CAgent):
                     values.append(value)
         return values
 
+    def prepare_dataset(self, batch_dict_list):
+        for agent_id in range(self.num_multi_agents):
+            obses = batch_dict_list[agent_id]['obses']
+            returns = batch_dict_list[agent_id]['returns']
+            dones = batch_dict_list[agent_id]['dones']
+            values = batch_dict_list[agent_id]['values']
+            actions = batch_dict_list[agent_id]['actions']
+            neglogpacs = batch_dict_list[agent_id]['neglogpacs']
+            mus = batch_dict_list[agent_id]['mus']
+            sigmas = batch_dict_list[agent_id]['sigmas']
+            rnn_states = batch_dict_list[agent_id].get('rnn_states', None)
+            rnn_masks = batch_dict_list[agent_id].get('rnn_masks', None)
+
+            advantages = returns - values
+
+            if self.normalize_value:    # this should be updated for multi-agent...
+                self.value_mean_std.train()
+                values = self.value_mean_std(values)
+                returns = self.value_mean_std(returns)
+                self.value_mean_std.eval()
+
+            advantages = torch.sum(advantages, axis=1)
+
+            if self.normalize_advantage:
+                if self.is_rnn:
+                    if self.normalize_rms_advantage:
+                        advantages = self.advantage_mean_std(advantages, mask=rnn_masks)
+                    else:
+                        advantages = torch_ext.normalization_with_masks(advantages, rnn_masks)
+                else:
+                    if self.normalize_rms_advantage:
+                        advantages = self.advantage_mean_std(advantages)
+                    else:
+                        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+                dataset_dict = {}
+                dataset_dict['old_values'] = values
+                dataset_dict['old_logp_actions'] = neglogpacs
+                dataset_dict['advantages'] = advantages
+                dataset_dict['returns'] = returns
+                dataset_dict['actions'] = actions
+                dataset_dict['obs'] = obses
+                dataset_dict['dones'] = dones
+                dataset_dict['rnn_states'] = rnn_states
+                dataset_dict['rnn_masks'] = rnn_masks
+                dataset_dict['mu'] = mus
+                dataset_dict['sigma'] = sigmas
+
+            self.dataset_list[agent_id].update_values_dict(dataset_dict)
+
+            if self.has_central_value:
+                dataset_dict = {}
+                dataset_dict['old_values'] = values
+                dataset_dict['advantages'] = advantages
+                dataset_dict['returns'] = returns
+                dataset_dict['actions'] = actions
+                dataset_dict['obs'] = batch_dict_list[agent_id]['states']
+                dataset_dict['dones'] = dones
+                dataset_dict['rnn_masks'] = rnn_masks
+                self.central_value_net.update_dataset(dataset_dict)     # should be updated for multi-agent setting
+
     def play_steps(self):
         update_list = self.update_list
 
@@ -234,7 +299,6 @@ class MultiAgentA2CAgent(A2CAgent):
                     shaped_rewards[:, agent_id] += discounted_reward.squeeze(1)
                     self.exp_buffs[agent_id].update_data('rewards', n, discounted_reward)
 
-            # TODO, following codes need to be expanded to multi-agent settings
             self.current_lengths += 1
             all_done_indices = self.dones.nonzero(as_tuple=False)
             env_done_indices = all_done_indices[::self.num_agents]
@@ -256,7 +320,6 @@ class MultiAgentA2CAgent(A2CAgent):
                 self.current_shaped_rewards_list[agent_id] = self.current_shaped_rewards_list[agent_id] * not_dones.unsqueeze(1)
             self.current_lengths = self.current_lengths * not_dones
 
-        # TODO, get_values should be expanded to multi-agent
         last_values = self.get_values(self.obs)
 
         batch_dict_list = []
@@ -382,10 +445,15 @@ class MultiAgentA2CAgent(A2CAgent):
 
         play_time_end = time.time()
         update_time_start = time.time()
-        rnn_masks = batch_dict.get('rnn_masks', None)
+        rnn_masks_list = []
+        for agent_id in range(self.num_multi_agents):
+            rnn_masks = batch_dict_list[agent_id].get('rnn_masks', None)
+            rnn_masks_list.append(rnn_masks)
 
-        self.curr_frames = batch_dict.pop('played_frames')
-        self.prepare_dataset(batch_dict)
+        # current_frames for all agents?
+        self.curr_frames = np.mean([batch_dict_list[agent_id].pop('played_frames')
+                                    for agent_id in range(self.num_multi_agents)], dtype=int)
+        self.prepare_dataset(batch_dict_list)
         self.algo_observer.after_steps()
 
         a_losses = []
