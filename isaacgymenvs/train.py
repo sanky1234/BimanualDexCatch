@@ -155,7 +155,6 @@ def launch_rlg_hydra(cfg: DictConfig):
     dict_cls = ige_env_cls.dict_obs_cls if hasattr(ige_env_cls, 'dict_obs_cls') and ige_env_cls.dict_obs_cls else False
 
     if dict_cls:
-        
         obs_spec = {}
         actor_net_cfg = cfg.train.params.network
         obs_spec['obs'] = {'names': list(actor_net_cfg.inputs.keys()), 'concat': not actor_net_cfg.name == "complex_net", 'space_name': 'observation_space'}
@@ -170,7 +169,8 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     # dump config dict
     if not cfg.test:
-        experiment_dir = os.path.join('runs', cfg.train.params.config.name +
+        algo = 'MA_' if cfg.train.params.algo.name == 'a2c_multi_agent' else ''
+        experiment_dir = os.path.join('runs', algo + cfg.train.params.config.name +
                                       '_{date:%Y-%m-%d_%H-%M-%S}'.format(date=datetime.now()))
 
         os.makedirs(experiment_dir, exist_ok=True)
