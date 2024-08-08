@@ -907,6 +907,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         _rew_buf, self.reset_buf[:] = compute_catch_reward(
             self.reset_buf, self.progress_buf, self.actions, self._l_qd, self._r_qd, self.states, self.reward_settings, self.max_episode_length
         )
+        self.rew_buf = _rew_buf # TODO, here
+
         if self.num_multi_agents > 1:
             if len(self.rew_buf.shape) == 1:
                 temp = self.rew_buf.clone()
@@ -917,8 +919,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
             # self.rew_buf = torch.stack((self.rew_buf, rew_buf), dim=1)
             self.rew_buf[:, 0] = _rew_buf
             self.rew_buf[:, 1] = rew_buf
-        else:
-            self.rew_buf = _rew_buf
 
     def compute_observations(self):
         self._refresh()

@@ -98,6 +98,8 @@ def launch_rlg_hydra(cfg: DictConfig):
     from isaacgymenvs.learning import amp_network_builder
     import isaacgymenvs
 
+    # for multi-agent RL
+    from isaacgymenvs.utils.marl_utils import MultiAgentRLGPUEnv
 
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_name = f"{cfg.wandb_name}_{time_str}"
@@ -144,7 +146,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         return envs
 
     env_configurations.register('rlgpu', {
-        'vecenv_type': 'RLGPU',
+        'vecenv_type': 'MARLGPU' if cfg.train.params.algo.name == "a2c_multi_agent" else "RLGPU",
         'env_creator': lambda **kwargs: create_isaacgym_env(**kwargs),
     })
 
@@ -162,11 +164,12 @@ def launch_rlg_hydra(cfg: DictConfig):
         
         vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: ComplexObsRLGPUEnv(config_name, num_actors, obs_spec, **kwargs))
     else:
-
         vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
+        vecenv.register('MARLGPU', lambda config_name, num_actors, **kwargs: MultiAgentRLGPUEnv(config_name, num_actors, **kwargs))
 
     rlg_config_dict = omegaconf_to_dict(cfg.train)
     rlg_config_dict = preprocess_train_config(cfg, rlg_config_dict)
+    cfg.task.env.isMultiAgent = True if cfg.train.params.algo.name == "a2c_multi_agent" else False
 
     observers = [RLGPUAlgoObserver()]
 
@@ -236,7 +239,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         return max(last_files, key=extract_episode_number, default=None)
 
     # Test Config
-    folder = 'BimanualDexCatchUR3Allegro_2024-07-16_16-25-49'
+    folder = 'MA_BimanualDexCatchUR3Allegro_2024-08-06_19-11-25'
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64
