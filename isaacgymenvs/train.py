@@ -226,4 +226,18 @@ def launch_rlg_hydra(cfg: DictConfig):
 
 
 if __name__ == "__main__":
+    """
+    * In the BimanualDexCatchUR3AllegroPPO.yaml,  make the following adjustments based on the learning mode:
+    [Single-Agent Learning]    
+        params:
+          seed: ${...seed}
+          algo:
+            name: a2c_continuous    # <-- here!
+    
+    [Multi-Agent Learning]
+        params:
+          seed: ${...seed}
+          algo:
+            name: a2c_multi_agent    # <-- here!
+    """
     launch_rlg_hydra()

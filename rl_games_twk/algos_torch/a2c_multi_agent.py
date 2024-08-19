@@ -387,7 +387,7 @@ class MultiAgentA2CAgent(A2CAgent):
                     discounted_reward = (self.gamma * res_list[agent_id]['values'] *
                                          self.cast_obs(infos['time_outs']).unsqueeze(1).float())
                     shaped_rewards[:, agent_id] += discounted_reward.squeeze(1)
-                    self.exp_buffs[agent_id].update_data('rewards', n, discounted_reward)
+                    self.exp_buffs[agent_id].update_data('rewards', n, shaped_rewards[:, agent_id].unsqueeze(-1))
 
             self.current_lengths += 1
             all_done_indices = self.dones.nonzero(as_tuple=False)

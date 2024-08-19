@@ -239,11 +239,26 @@ def launch_rlg_hydra(cfg: DictConfig):
         return max(last_files, key=extract_episode_number, default=None)
 
     # Test Config
-    folder = 'MA_BimanualDexCatchUR3Allegro_2024-08-06_19-11-25'
+    folder = 'MA_BimanualDexCatchUR3Allegro_2024-08-19_09-56-16'
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64
     cfg.headless = False
+
+    # Tensor board
+    print_log = True
+    if print_log:
+        # http://localhost:6006
+
+        from tensorboard import program
+        log_path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/summaries/'
+
+        tb = program.TensorBoard()
+        tb.configure(argv=[None, '--logdir', log_path])
+
+        url = tb.launch()
+        print(f"TensorBoard is running at {url}")
+
     runner.run({
         'train': not cfg.test,
         'play': cfg.test,

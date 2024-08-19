@@ -907,7 +907,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         _rew_buf, self.reset_buf[:] = compute_catch_reward(
             self.reset_buf, self.progress_buf, self.actions, self._l_qd, self._r_qd, self.states, self.reward_settings, self.max_episode_length
         )
-        self.rew_buf = _rew_buf # TODO, here
+        self.rew_buf = _rew_buf
 
         if self.num_multi_agents > 1:
             if len(self.rew_buf.shape) == 1:
@@ -917,8 +917,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
             rew_buf, reset_buf = compute_throw_reward(
                 self.reset_buf, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
             # self.rew_buf = torch.stack((self.rew_buf, rew_buf), dim=1)
-            self.rew_buf[:, 0] = _rew_buf
-            self.rew_buf[:, 1] = rew_buf
+            self.rew_buf[:, 0] = 1.0 * _rew_buf     # TODO, only effect
+            self.rew_buf[:, 1] = 0.0 * rew_buf      # no effect
 
     def compute_observations(self):
         self._refresh()
@@ -1277,7 +1277,7 @@ def compute_throw_reward(
     obj_throw_reward = 0.5 * obj_pos_vel_reward + 0.5 * obj_rot_vel_reward
 
     # reward_settings["r_hand_scale"]
-    rewards = (0.5 * obj_throw_reward)
+    rewards = (1.0 * obj_throw_reward)
 
     # Compute resets
     reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size / 2 + 1e-2),
