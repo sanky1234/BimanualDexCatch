@@ -220,7 +220,11 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
-        self.num_multi_agents = 2 if self.is_multi_agent else 1
+        self.num_multi_agents = 1
+        if self.is_multi_agent:
+            self.num_multi_agents = 2
+            self.rew_buf = torch.zeros(self.num_envs, self.num_multi_agents, device=self.device, dtype=torch.float)
+
         self.num_a_actions = self.cfg["env"]["numThrowerActions"]
 
         # UR3 defaults
@@ -904,21 +908,18 @@ class BimanualDexCatchUR3Allegro(VecTask):
         return torch.ones(self.num_envs, device=self.device, dtype=torch.long)
 
     def compute_reward(self, actions):
-        _rew_buf, self.reset_buf[:] = compute_catch_reward(
+        rew_catch_buf, self.reset_buf[:] = compute_catch_reward(
             self.reset_buf, self.progress_buf, self.actions, self._l_qd, self._r_qd, self.states, self.reward_settings, self.max_episode_length
         )
-        self.rew_buf = _rew_buf
 
         if self.num_multi_agents > 1:
-            if len(self.rew_buf.shape) == 1:
-                temp = self.rew_buf.clone()
-                self.rew_buf = torch.zeros(self.rew_buf.size()[0], self.num_multi_agents, device=self.device)
-                self.rew_buf[:, 0] = temp
-            rew_buf, reset_buf = compute_throw_reward(
+            rew_throw_buf, reset_buf = compute_throw_reward(
                 self.reset_buf, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
-            # self.rew_buf = torch.stack((self.rew_buf, rew_buf), dim=1)
-            self.rew_buf[:, 0] = 1.0 * _rew_buf     # TODO, only effect
-            self.rew_buf[:, 1] = 0.0 * rew_buf      # no effect
+
+            self.rew_buf[:, 0] = 1.0 * rew_catch_buf
+            self.rew_buf[:, 1] = 0.0 * rew_throw_buf
+        else:
+            self.rew_buf = rew_catch_buf
 
     def compute_observations(self):
         self._refresh()
