@@ -118,12 +118,21 @@ class MultiAgentA2CAgent(A2CAgent):
         optimizer = optim.Adam(model.parameters(), float(self.last_lr_list[agent_id]), eps=1e-08, weight_decay=self.weight_decay)
         return model, optimizer
 
+    def obs_to_tensors(self, obs):
+        obs_is_dict = isinstance(obs, dict)
+        if obs_is_dict:
+            upd_obs = {}
+            for key, value in obs.items():
+                upd_obs[key] = self._obs_to_tensors_internal(value)
+        else:
+            upd_obs = self.cast_obs(obs)
+        return upd_obs
+
     def env_reset(self):
         # observations
         obs_buf = self.vec_env.env.obs_buf
         obs_buf = torch.clamp(obs_buf, -self.vec_env.env.clip_obs, self.vec_env.env.clip_obs).to(self.vec_env.env.rl_device)
         obs = self.vec_env.reset()
-        obs['obs1'] = obs_buf
         obs = self.obs_to_tensors(obs)
 
         # states if it has
@@ -133,7 +142,7 @@ class MultiAgentA2CAgent(A2CAgent):
         agent_state = []
 
         for i in range(self.num_multi_agents):
-            key = 'obs' + str(i) if i > 0 else 'obs'
+            key = 'obs' + str(i)
             sub_agent_obs.append(obs[key])
             agent_state.append(state_buf)
 
@@ -154,7 +163,7 @@ class MultiAgentA2CAgent(A2CAgent):
             return self.obs_to_tensors(obs), torch.from_numpy(rewards).to(self.ppo_device).float(), torch.from_numpy(dones).to(self.ppo_device), infos
 
     def get_action_values(self, agent_id, obs):
-        processed_obs = self._preproc_obs(obs['obs'])
+        processed_obs = self._preproc_obs(obs['obs' + str(agent_id)])
         self.models[agent_id].eval()
         input_dict = {
             'is_train': False,
@@ -236,7 +245,7 @@ class MultiAgentA2CAgent(A2CAgent):
                     value = self.get_central_value(input_dict)
                 else:
                     self.models[agent_id].eval()
-                    processed_obs = self._preproc_obs(obs['obs'])
+                    processed_obs = self._preproc_obs(obs['obs' + str(agent_id)])
                     input_dict = {
                         'is_train': False,
                         'prev_actions': None,
@@ -364,7 +373,7 @@ class MultiAgentA2CAgent(A2CAgent):
                     res_dict = self.get_masked_action_values(self.obs, masks)
                 else:
                     res_dict = self.get_action_values(agent_id, self.obs)   # here
-                self.exp_buffs[agent_id].update_data('obses', n, self.obs['obs'+str(agent_id) if agent_id > 0 else 'obs'])
+                self.exp_buffs[agent_id].update_data('obses', n, self.obs['obs' + str(agent_id)])
                 self.exp_buffs[agent_id].update_data('dones', n, self.dones)
 
                 res_list.append(res_dict)
@@ -560,7 +569,7 @@ class MultiAgentA2CAgent(A2CAgent):
         kls = []
 
         for mini_ep in range(0, self.mini_epochs_num):
-            for agent_id in torch.randperm(self.num_multi_agents):  # randomized agent id
+            for agent_id in torch.randperm(self.num_multi_agents):  # randomized agent id, TODO
                 ep_kls = []     # per agent
                 for i in range(len(self.dataset_list[agent_id])):
                     a_loss, c_loss, entropy, kl, last_lr_list, lr_mul, cmu, csigma, b_loss = self.train_actor_critic(self.dataset_list[agent_id][i], agent_id)

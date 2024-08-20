@@ -919,7 +919,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
             self.rew_buf[:, 0] = 1.0 * rew_catch_buf
             self.rew_buf[:, 1] = 0.0 * rew_throw_buf
         else:
-            self.rew_buf = rew_catch_buf
+            self.rew_buf = 1.0 * rew_catch_buf
 
     def compute_observations(self):
         self._refresh()
