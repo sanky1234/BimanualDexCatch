@@ -560,8 +560,8 @@ class MultiAgentA2CAgent(A2CAgent):
         kls = []
 
         for mini_ep in range(0, self.mini_epochs_num):
-            for agent_id in range(self.num_multi_agents):
-                ep_kls = []
+            for agent_id in torch.randperm(self.num_multi_agents):  # randomized agent id
+                ep_kls = []     # per agent
                 for i in range(len(self.dataset_list[agent_id])):
                     a_loss, c_loss, entropy, kl, last_lr_list, lr_mul, cmu, csigma, b_loss = self.train_actor_critic(self.dataset_list[agent_id][i], agent_id)
                     a_losses.append(a_loss)
@@ -585,7 +585,7 @@ class MultiAgentA2CAgent(A2CAgent):
                 if self.multi_gpu:
                     dist.all_reduce(av_kls, op=dist.ReduceOp.SUM)
                     av_kls /= self.world_size
-                if self.schedule_type == 'standard':
+                if self.schedule_type == 'standard':    # default!
                     self.last_lr_list[agent_id], self.entropy_coef = self.scheduler.update(self.last_lr_list[agent_id],
                                                                                            self.entropy_coef, self.epoch_num, 0, av_kls.item())
                     self.update_lr(self.last_lr_list[agent_id], agent_id)
@@ -660,23 +660,19 @@ class MultiAgentA2CAgent(A2CAgent):
                     self.writer.add_scalar('losses/aug_loss', np.mean(aug_losses), frame)
 
                 if self.game_rewards.current_size > 0:
-
                     mean_rewards = self.game_rewards.get_mean()
                     mean_shaped_rewards = self.game_shaped_rewards.get_mean()
                     mean_lengths = self.game_lengths.get_mean()
                     self.mean_rewards = mean_rewards[0]
 
-                    for i in range(self.value_size):
+                    for i in range(self.value_size):    # default: value_size=1
                         rewards_name = 'rewards' if i == 0 else 'rewards{0}'.format(i)
                         self.writer.add_scalar(rewards_name + '/step'.format(i), mean_rewards[i], frame)
                         self.writer.add_scalar(rewards_name + '/iter'.format(i), mean_rewards[i], epoch_num)
                         self.writer.add_scalar(rewards_name + '/time'.format(i), mean_rewards[i], total_time)
-                        self.writer.add_scalar('shaped_' + rewards_name + '/step'.format(i), mean_shaped_rewards[i],
-                                               frame)
-                        self.writer.add_scalar('shaped_' + rewards_name + '/iter'.format(i), mean_shaped_rewards[i],
-                                               epoch_num)
-                        self.writer.add_scalar('shaped_' + rewards_name + '/time'.format(i), mean_shaped_rewards[i],
-                                               total_time)
+                        self.writer.add_scalar('shaped_' + rewards_name + '/step'.format(i), mean_shaped_rewards[i], frame)
+                        self.writer.add_scalar('shaped_' + rewards_name + '/iter'.format(i), mean_shaped_rewards[i], epoch_num)
+                        self.writer.add_scalar('shaped_' + rewards_name + '/time'.format(i), mean_shaped_rewards[i], total_time)
 
                     self.writer.add_scalar('episode_lengths/step', mean_lengths, frame)
                     self.writer.add_scalar('episode_lengths/iter', mean_lengths, epoch_num)

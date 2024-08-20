@@ -49,9 +49,9 @@ class SmoothedPlot:
             # Smoothed data (vivid)
             plt.plot(step, smoothed_values, label=f'{label}')
 
-        plt.title('Step vs. Value with Smoothing')
-        plt.xlabel('Step')
-        plt.ylabel('Value')
+        plt.title('Bimanual Throw/Catch Reward Plot')
+        plt.xlabel('Epoch')
+        plt.ylabel('Reward')
         plt.grid(True)
         plt.legend()
         plt.show()
