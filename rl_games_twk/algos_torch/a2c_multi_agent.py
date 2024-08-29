@@ -111,6 +111,12 @@ class MultiAgentA2CAgent(A2CAgent):
         del self.model
         del self.optimizer
 
+        if self.normalize_value:
+            if not self.has_central_value:
+                self.value_mean_std_list = []
+                for agent_id in range(self.num_multi_agents):
+                    self.value_mean_std_list.append(self.models[agent_id].value_mean_std)
+
     def build_model(self, build_config, agent_id):
         model = self.network.build(build_config)
         model.to(self.ppo_device)
@@ -273,10 +279,10 @@ class MultiAgentA2CAgent(A2CAgent):
             advantages = returns - values
 
             if self.normalize_value:    # this should be updated for multi-agent...
-                self.value_mean_std.train()
-                values = self.value_mean_std(values)
-                returns = self.value_mean_std(returns)
-                self.value_mean_std.eval()
+                self.value_mean_std_list[agent_id].train()
+                values = self.value_mean_std_list[agent_id](values)
+                returns = self.value_mean_std_list[agent_id](returns)
+                self.value_mean_std_list[agent_id].eval()
 
             advantages = torch.sum(advantages, axis=1)
 
@@ -292,18 +298,18 @@ class MultiAgentA2CAgent(A2CAgent):
                     else:
                         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-                dataset_dict = {}
-                dataset_dict['old_values'] = values
-                dataset_dict['old_logp_actions'] = neglogpacs
-                dataset_dict['advantages'] = advantages
-                dataset_dict['returns'] = returns
-                dataset_dict['actions'] = actions
-                dataset_dict['obs'] = obses
-                dataset_dict['dones'] = dones
-                dataset_dict['rnn_states'] = rnn_states
-                dataset_dict['rnn_masks'] = rnn_masks
-                dataset_dict['mu'] = mus
-                dataset_dict['sigma'] = sigmas
+            dataset_dict = {}
+            dataset_dict['old_values'] = values
+            dataset_dict['old_logp_actions'] = neglogpacs
+            dataset_dict['advantages'] = advantages
+            dataset_dict['returns'] = returns
+            dataset_dict['actions'] = actions
+            dataset_dict['obs'] = obses
+            dataset_dict['dones'] = dones
+            dataset_dict['rnn_states'] = rnn_states
+            dataset_dict['rnn_masks'] = rnn_masks
+            dataset_dict['mu'] = mus
+            dataset_dict['sigma'] = sigmas
 
             self.dataset_list[agent_id].update_values_dict(dataset_dict)
 
