@@ -136,13 +136,13 @@ class MultiAgentA2CAgent(A2CAgent):
 
     def env_reset(self):
         # observations
-        obs_buf = self.vec_env.env.obs_buf
-        obs_buf = torch.clamp(obs_buf, -self.vec_env.env.clip_obs, self.vec_env.env.clip_obs).to(self.vec_env.env.rl_device)
+        obs_bufs = self.vec_env.env.obs_bufs
+        obs_bufs = torch.clamp(obs_bufs, -self.vec_env.env.clip_obs, self.vec_env.env.clip_obs).to(self.vec_env.env.rl_device)
         obs = self.vec_env.reset()
         obs = self.obs_to_tensors(obs)
 
         # states if it has
-        state_buf = obs['states'] if hasattr(obs, 'states') else obs_buf
+        state_buf = obs['states'] if hasattr(obs, 'states') else obs_bufs
 
         sub_agent_obs = []
         agent_state = []
