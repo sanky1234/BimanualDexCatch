@@ -382,22 +382,23 @@ class BasePlayer(object):
 
     def get_batch_size(self, obses, batch_size):
         obs_shape = self.obs_shape
-        if type(self.obs_shape) is dict:
-            if 'obs' in obses:
-                obses = obses['obs']
-            keys_view = self.obs_shape.keys()
-            keys_iterator = iter(keys_view)
-            if 'observation' in obses:
-                first_key = 'observation'
-            else:
-                first_key = next(keys_iterator)
-            obs_shape = self.obs_shape[first_key]
+
+        if isinstance(obs_shape, dict):
+            obses = obses.get('obs', obses)
+            first_key = 'observation' if 'observation' in obses else next(iter(obs_shape))
+            obs_shape = obs_shape[first_key]
             obses = obses[first_key]
 
-        if len(obses.size()) > len(obs_shape):
-            batch_size = obses.size()[0]
+        if isinstance(obses, dict):
+            first_key = next(iter(obses))
+            obs = obses[first_key]
+        else:
+            obs = obses
+
+        if len(obs.size()) > len(obs_shape):
+            batch_size = obs.size(0)
             self.has_batch_dimension = True
 
         self.batch_size = batch_size
-
         return batch_size
+

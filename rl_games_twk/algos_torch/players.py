@@ -62,16 +62,16 @@ class MultiAgentPpoPlayerContinuous(BasePlayer):
         if self.has_batch_dimension == False:
             obs = unsqueeze_obs(obs)
         obs = self._preproc_obs(obs)
-        input_dict = {
-            'is_train': False,
-            'prev_actions': None,
-            'obs' : obs,
-            'rnn_states' : self.states
-        }
 
         mus = []
         actions = []
         for agent_id in range(self.num_multi_agents):
+            input_dict = {
+                'is_train': False,
+                'prev_actions': None,
+                'obs': obs['obs'+str(agent_id)],
+                'rnn_states': self.states
+            }
             with torch.no_grad():
                 res_dict = self.models[agent_id](input_dict)
             mu = res_dict['mus']

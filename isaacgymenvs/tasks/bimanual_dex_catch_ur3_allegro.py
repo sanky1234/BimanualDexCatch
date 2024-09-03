@@ -220,10 +220,14 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
-        self.num_multi_agents = 1
         if self.is_multi_agent:
             self.num_multi_agents = 2
-            self.rew_buf = torch.zeros(self.num_envs, self.num_multi_agents, device=self.device, dtype=torch.float)
+            self.rew_bufs = torch.zeros(self.num_envs, self.num_multi_agents, device=self.device, dtype=torch.float)
+            self.obs_bufs = torch.zeros(self.num_envs, self.num_multi_agents, self.num_obs, device=self.device, dtype=torch.float)
+
+            # remove buffers for single-agent
+            del self.obs_buf
+            del self.rew_buf
 
         self.num_a_actions = self.cfg["env"]["numThrowerActions"]
 
@@ -916,8 +920,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
             rew_throw_buf, reset_buf = compute_throw_reward(
                 self.reset_buf, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
 
-            self.rew_buf[:, 0] = 1.0 * rew_catch_buf
-            self.rew_buf[:, 1] = 0.0 * rew_throw_buf
+            self.rew_bufs[:, 0] = 1.0 * rew_catch_buf
+            self.rew_bufs[:, 1] = 0.0 * rew_throw_buf
         else:
             self.rew_buf = 1.0 * rew_catch_buf
 
@@ -931,7 +935,13 @@ class BimanualDexCatchUR3Allegro(VecTask):
                    "object_pos_relative_left_hand", "object_pos_relative_right_hand"]
         obs += ["l_eef_pos"] + ["l_eef_quat"] + ["r_eef_pos"] + ["r_eef_quat"]
 
-        self.obs_buf = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
+        if self.num_multi_agents > 1:
+            for agent_id in range(self.num_multi_agents):
+                self.obs_bufs[:, agent_id] = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
+            return self.obs_bufs
+        else:
+            self.obs_buf = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
+            return self.obs_buf
 
         # # TODO, should be removed later..
         # if torch.any(torch.isnan(self.obs_buf)):
@@ -943,7 +953,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # maxs = {ob: torch.max(self.states[ob]).item() for ob in obs}
 
-        return self.obs_buf
+        # return self.obs_buf
 
     def reset_idx(self, env_ids):
         env_ids_int32 = env_ids.to(dtype=torch.int32)
@@ -1104,13 +1114,33 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # key = cv2.waitKey(int(not self.debug_btn))
         # if key == ord('d'): self.debug_btn = not self.debug_btn
 
+        """
+        Action Composition
+            Full Action Dim(57)
+            * Catcher (44)
+                - left arm [0:6]
+                - left fingers [6:22]
+                - right arm [22:28]
+                - right fingers [28:44]
+            * Thrower (13)
+                - object pose [44:51]
+                - object lin vel [51:54]
+                - object rot vel [54:57]
+        """
+
         mask = torch.zeros_like(actions)
         # mask[:, 0] = 1.0
         self.actions = actions.clone().to(self.device)
 
+        # Catcher actions
         # Split arm and finger command
         l_u_arm, l_u_finger = self.actions[:, :6], self.actions[:, 6:22]
         r_u_arm, r_u_finger = self.actions[:, 22:22+6], self.actions[:, 22+6:22+6+16]
+
+        # Thrower actions
+        obj_pose = self.actions[44:51]
+        obj_lin_vel = self.actions[51:54]
+        obj_rot_vel = self.actions[54:57]
 
         # Control arm (scale value first)
         l_u_arm = l_u_arm * self.l_cmd_limit / self.action_scale
