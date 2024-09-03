@@ -739,6 +739,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Setup init state buffer
         self._init_object_state = torch.zeros(self.num_envs, 13, device=self.device)
+        self._init_object_state[:, 7] = 1.0     # unit quaternion
 
         # Setup data
         self.init_data()
@@ -920,8 +921,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
             rew_throw_buf, reset_buf = compute_throw_reward(
                 self.reset_buf, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
 
-            self.rew_bufs[:, 0] = 1.0 * rew_catch_buf
-            self.rew_bufs[:, 1] = 0.0 * rew_throw_buf
+            self.rew_bufs[:, 0] = 0.5 * rew_catch_buf
+            self.rew_bufs[:, 1] = 0.5 * rew_throw_buf
         else:
             self.rew_buf = 1.0 * rew_catch_buf
 
@@ -971,7 +972,13 @@ class BimanualDexCatchUR3Allegro(VecTask):
         indices = torch.searchsorted(self.obj_id_size_keys, rand_obj_ids)
         self._object_size_vec[env_ids] = self.obj_id_size_values[indices].clone()
 
-        self._reset_init_object_state(obj='A', env_ids=env_ids)
+        if self.is_multi_agent:
+            if self.actions is None:
+                self._reset_uniform_random_object_state(obj='A', env_ids=env_ids)
+            else:
+                self._reset_adversarial_random_object_state(obj='A', env_ids=env_ids)
+        else:
+            self._reset_uniform_random_object_state(obj='A', env_ids=env_ids)
 
         _rand_obj_ids = rand_obj_ids - self._obj_ref_id
         self._target_obj_state[env_ids, _rand_obj_ids] = self._init_object_state[env_ids].clone()
@@ -1029,7 +1036,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0
 
-    def _reset_init_object_state(self, obj, env_ids):
+    def _reset_uniform_random_object_state(self, obj, env_ids):
         # If env_ids is None, we reset all the envs
         if env_ids is None:
             env_ids = torch.arange(start=0, end=self.num_envs, device=self.device, dtype=torch.long)
@@ -1076,6 +1083,64 @@ class BimanualDexCatchUR3Allegro(VecTask):
         this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7]) - 1.0
         this_object_state_all[env_ids, 9] = torch.abs(this_object_state_all[env_ids, 9]) + 1.0
         this_object_state_all[env_ids, 10:] = 10.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+
+    def _reset_adversarial_random_object_state(self, obj, env_ids):
+        # If env_ids is None, we reset all the envs
+        if env_ids is None:
+            env_ids = torch.arange(start=0, end=self.num_envs, device=self.device, dtype=torch.long)
+
+        # Initialize buffer to hold sampled values
+        num_resets = len(env_ids)
+        sampled_obj_state = torch.zeros(num_resets, 13, device=self.device)
+
+        # Get correct references depending on which one was selected
+        if obj.lower() == 'a':
+            this_object_state_all = self._init_object_state
+            obj_size = self._object_size_vec
+        else:
+            raise ValueError(f"Invalid cube specified, options are 'A' and 'B'; got: {obj}")
+
+        # Sampling is "centered" around middle of table
+        # centered_cube_xy_state = torch.tensor(self._table_surface_pos[:2], device=self.device, dtype=torch.float32)
+        biased_obj_xy_state = torch.tensor(self._throw_start_pos[:2], device=self.device, dtype=torch.float)
+
+        # Set z value, which is fixed height
+        sampled_obj_state[:, 2] = self._table_surface_pos[2] + obj_size.squeeze(-1)[env_ids]
+
+        # Initialize rotation, which is no rotation (quat w = 1)
+        sampled_obj_state[:, 6] = 1.0
+        sampled_obj_state[:, :2] = biased_obj_xy_state.unsqueeze(0) + torch.cat([
+            0.5 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5),
+            2.0 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5)
+        ], dim=-1)
+
+        sampled_obj_state[:, 2] = torch.tensor([1.5], device=self.device) + \
+                                  2.0 * self.start_position_noise * (torch.rand(num_resets, device=self.device) - 0.5)
+
+        # Sample rotation value
+        if self.start_rotation_noise > 0:
+            aa_rot = torch.zeros(num_resets, 3, device=self.device)
+            aa_rot[:, 2] = 2.0 * self.start_rotation_noise * (torch.rand(num_resets, device=self.device) - 0.5)
+            sampled_obj_state[:, 3:7] = quat_mul(axisangle2quat(aa_rot), sampled_obj_state[:, 3:7])
+
+        # Lastly, set these sampled values as the new init state
+        this_object_state_all[env_ids, :] = sampled_obj_state
+
+        # # linear/angular velocity randomization, m/s, radian/s
+        # this_object_state_all[env_ids, 7:10] = 1.0 * torch.tensor([5.0, 2.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        # this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7]) - 1.0
+        # this_object_state_all[env_ids, 9] = torch.abs(this_object_state_all[env_ids, 9]) + 1.0
+        # this_object_state_all[env_ids, 10:] = 10.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+
+        # Thrower actions
+        # obj_pose = self.actions[env_ids, 44:51]
+        obj_lin_vel = self.actions[env_ids, 51:54]
+        obj_rot_vel = self.actions[env_ids, 54:57]
+
+        # this_object_state_all[env_ids, 0:7] = obj_pose
+        this_object_state_all[env_ids, 7:10] = obj_lin_vel
+        this_object_state_all[env_ids, 10:13] = obj_rot_vel
+
 
     def _compute_osc_torques(self, dpose):
         """
@@ -1136,11 +1201,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # Split arm and finger command
         l_u_arm, l_u_finger = self.actions[:, :6], self.actions[:, 6:22]
         r_u_arm, r_u_finger = self.actions[:, 22:22+6], self.actions[:, 22+6:22+6+16]
-
-        # Thrower actions
-        obj_pose = self.actions[44:51]
-        obj_lin_vel = self.actions[51:54]
-        obj_rot_vel = self.actions[54:57]
 
         # Control arm (scale value first)
         l_u_arm = l_u_arm * self.l_cmd_limit / self.action_scale
@@ -1302,8 +1362,10 @@ def compute_throw_reward(
     obj_pos_vel_norm = torch.norm(obj_pos_vel, dim=-1)
     obj_rot_vel_norm = torch.norm(obj_rot_vel, dim=-1)
 
-    obj_pos_vel_reward = torch.exp(-10.0 * obj_pos_vel_norm)
-    obj_rot_vel_reward = torch.exp(-10.0 * obj_rot_vel_norm)
+    lin_scale = 27.78  # Max speed: 27.78 m/s, equivalent to 100 km/h (approximate speed of a fastball thrown by a pitcher)
+    rot_scale = 209.44  # Max 2000 RPM, representing the typical spin rate of a curveball thrown by a pitcher
+    obj_pos_vel_reward = 1.0 - torch.exp(-5.0 * obj_pos_vel_norm / lin_scale)
+    obj_rot_vel_reward = 1.0 - torch.exp(-5.0 * obj_rot_vel_norm / rot_scale)
 
     obj_throw_reward = 0.5 * obj_pos_vel_reward + 0.5 * obj_rot_vel_reward
 
