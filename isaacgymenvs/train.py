@@ -169,7 +169,7 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     # dump config dict
     if not cfg.test:
-        algo = 'MA_' if cfg.train.params.algo.name == 'a2c_multi_agent' else ''
+        algo = 'MA_' if cfg.train.params.algo.name == 'a2c_multi_agent' else 'SA_'
         experiment_dir = os.path.join('runs', algo + cfg.train.params.config.name +
                                       '_{date:%Y-%m-%d_%H-%M-%S}'.format(date=datetime.now()))
 
