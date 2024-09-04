@@ -148,7 +148,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Define the observations and actions of the thrower
         # initial state of the object to be thrown (pose, Xd, Rd)
-        self.cfg["env"]["numThrowerActions"] = 13 if self.is_multi_agent else 0
+        self.cfg["env"]["numThrowerActions"] = 6 if self.is_multi_agent else 0
 
         # actions if osc: delta EEF if OSC (6) + finger torques (16) = 22
         # actions if joint: joint torques (6) + finger torques (16) = 22
@@ -933,6 +933,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
             rew_throw_buf, reset_buf = compute_throw_reward(
                 self.reset_buf, self.actions, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
 
+            self.reset_buf = self.reset_buf | reset_buf
             self.rew_bufs[:, 0] = 0.5 * rew_catch_buf
             self.rew_bufs[:, 1] = 0.5 * rew_throw_buf
         else:
@@ -1149,12 +1150,14 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Thrower actions
         # obj_pose = self.actions[env_ids, 44:51]
-        obj_lin_vel = self.actions[env_ids, 51:54]
-        obj_rot_vel = self.actions[env_ids, 54:57]
+        obj_lin_vel = self.actions[env_ids, 44:47]
+        obj_rot_vel = self.actions[env_ids, 47:50]
 
         # this_object_state_all[env_ids, 0:7] = obj_pose
-        this_object_state_all[env_ids, 7:10] += obj_lin_vel
-        this_object_state_all[env_ids, 10:13] += obj_rot_vel
+        lin_scale = 27.78  # Max speed: 27.78 m/s, equivalent to 100 km/h (approximate speed of a fastball thrown by a pitcher)
+        rot_scale = 209.44  # Max 2000 RPM, representing the typical spin rate of a curveball thrown by a pitcher
+        this_object_state_all[env_ids, 7:10] += obj_lin_vel * lin_scale * 0.1
+        this_object_state_all[env_ids, 10:13] += obj_rot_vel * rot_scale * 0.1
 
 
     def _compute_osc_torques(self, dpose):
@@ -1326,7 +1329,7 @@ def compute_catch_reward(
     # reward for lifting cube
     temp_pos = states["object_pos"][ar_idx, object_idx, 2]
     object_height = temp_pos - reward_settings["table_height"]
-    object_lifted = (object_height - object_size) > object_size * 0.5 * 1.6    # cube: 0.04,
+    object_lifted = (object_height - object_size) > object_size #* 0.5 * 1.6    # cube: 0.04,
     lift_reward = object_lifted
 
     l_arm_contact_n_mag_mean = torch.mean(torch.norm(states["left_arm_contact_n_mag"], dim=-1), dim=-1)
@@ -1388,8 +1391,8 @@ def compute_throw_reward(
 
     lin_scale = 27.78  # Max speed: 27.78 m/s, equivalent to 100 km/h (approximate speed of a fastball thrown by a pitcher)
     rot_scale = 209.44  # Max 2000 RPM, representing the typical spin rate of a curveball thrown by a pitcher
-    obj_pos_vel_reward = 1.0 - torch.exp(-5.0 * obj_pos_vel_norm / lin_scale)
-    obj_rot_vel_reward = 1.0 - torch.exp(-5.0 * obj_rot_vel_norm / rot_scale)
+    obj_pos_vel_reward = 1.0 - torch.exp(-5.0 * obj_pos_vel_norm)
+    obj_rot_vel_reward = 1.0 - torch.exp(-5.0 * obj_rot_vel_norm)
 
     obj_throw_reward = 0.5 * obj_pos_vel_reward + 0.5 * obj_rot_vel_reward
 
@@ -1397,7 +1400,7 @@ def compute_throw_reward(
     rewards = (1.0 * obj_throw_reward)
 
     # Compute resets
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size),
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height > 3.0),
                             torch.ones_like(reset_buf), reset_buf)
 
     return rewards, reset_buf
