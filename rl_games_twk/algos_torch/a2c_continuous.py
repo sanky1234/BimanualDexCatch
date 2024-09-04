@@ -1,3 +1,5 @@
+import gym.spaces
+
 from rl_games_twk.common import a2c_common
 from rl_games_twk.algos_torch import torch_ext
 
@@ -14,6 +16,9 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
     def __init__(self, base_name, params):
         a2c_common.ContinuousA2CBase.__init__(self, base_name, params)
         obs_shape = self.obs_shape
+        if type(obs_shape) == dict:
+            first_key = next(iter(obs_shape))
+            obs_shape = obs_shape[first_key]
         build_config = {
             'actions_num' : self.actions_num,
             'input_shape' : obs_shape,

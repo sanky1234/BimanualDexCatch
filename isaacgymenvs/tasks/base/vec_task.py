@@ -401,8 +401,8 @@ class VecTask(Env):
         if self.num_multi_agents > 1:
             for agent_id in range(self.num_multi_agents):
                 if self.dr_randomizations.get('observations', None):
-                    self.obs_bufs[:, agent_id] = self.dr_randomizations['observations']['noise_lambda'](self.obs_bufs[:, agent_id])
-                self.obs_dict["obs"+str(agent_id)] = torch.clamp(self.obs_bufs[:, agent_id], -self.clip_obs, self.clip_obs).to(self.rl_device)
+                    self.obs_bufs[:, agent_id] = self.dr_randomizations['observations']['noise_lambda'](self.obs_bufs["obs"+str(agent_id)])
+                self.obs_dict["obs"+str(agent_id)] = torch.clamp(self.obs_bufs["obs"+str(agent_id)], -self.clip_obs, self.clip_obs).to(self.rl_device)
         else:
             if self.dr_randomizations.get('observations', None):
                 self.obs_buf = self.dr_randomizations['observations']['noise_lambda'](self.obs_buf)
@@ -441,7 +441,7 @@ class VecTask(Env):
         """
         if self.num_multi_agents > 1:
             for agent_id in range(self.num_multi_agents):
-                self.obs_dict["obs"+str(agent_id)] = torch.clamp(self.obs_bufs[:, agent_id], -self.clip_obs, self.clip_obs).to(self.rl_device)
+                self.obs_dict["obs"+str(agent_id)] = torch.clamp(self.obs_bufs["obs"+str(agent_id)], -self.clip_obs, self.clip_obs).to(self.rl_device)
         else:
             self.obs_dict["obs"] = torch.clamp(self.obs_buf, -self.clip_obs, self.clip_obs).to(self.rl_device)
 

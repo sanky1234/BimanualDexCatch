@@ -70,17 +70,21 @@ class MultiAgentA2CAgent(A2CAgent):
 
         # for Model
         catch_build_config = OverridableDict({'actions_num': self.actions_num - self.num_a_actions,
-                                             'input_shape': self.obs_shape,
+                                             'input_shape': self.obs_shape['catch'],
                                              'num_seqs': self.num_actors * self.num_agents,
                                              'value_size': self.env_info.get('value_size', 1),
                                              'normalize_value': self.normalize_value,
                                              'normalize_input': self.normalize_input})
         throw_build_config = copy.deepcopy(catch_build_config)
+        throw_build_config['input_shape'] = self.obs_shape['throw']
         self.build_configs = [catch_build_config,
                               throw_build_config.override(actions_num=self.num_a_actions)]
 
         # for Experience Buffer
         self.env_info_list = [copy.deepcopy(self.env_info) for _ in range(len(self.build_configs))]
+        self.env_info_list[0]['observation_space'] = self.env_info['observation_space']['catch']
+        self.env_info_list[1]['observation_space'] = self.env_info['observation_space']['throw']
+
         for env_info, config in zip(self.env_info_list, self.build_configs):
             actions_num = config['actions_num']
             env_info['action_space'] = spaces.Box(np.ones(actions_num) * -1., np.ones(actions_num) * 1.)
@@ -137,7 +141,9 @@ class MultiAgentA2CAgent(A2CAgent):
     def env_reset(self):
         # observations
         obs_bufs = self.vec_env.env.obs_bufs
-        obs_bufs = torch.clamp(obs_bufs, -self.vec_env.env.clip_obs, self.vec_env.env.clip_obs).to(self.vec_env.env.rl_device)
+        for agent_id in range(self.num_multi_agents):
+            obs_bufs["obs"+str(agent_id)] = torch.clamp(obs_bufs["obs"+str(agent_id)], -self.vec_env.env.clip_obs, self.vec_env.env.clip_obs).to(self.vec_env.env.rl_device)
+        # obs_bufs = torch.clamp(obs_bufs, -self.vec_env.env.clip_obs, self.vec_env.env.clip_obs).to(self.vec_env.env.rl_device)
         obs = self.vec_env.reset()
         obs = self.obs_to_tensors(obs)
 
@@ -150,13 +156,13 @@ class MultiAgentA2CAgent(A2CAgent):
         for i in range(self.num_multi_agents):
             key = 'obs' + str(i)
             sub_agent_obs.append(obs[key])
-            agent_state.append(state_buf)
+            agent_state.append(state_buf[key])
 
         # to tensor form
-        _obs = torch.transpose(torch.stack(sub_agent_obs), 1, 0)
-        _state_all = torch.transpose(torch.stack(agent_state), 1, 0)
+        # _obs = torch.transpose(torch.stack(sub_agent_obs), 1, 0)
+        # _state_all = torch.transpose(torch.stack(agent_state), 1, 0)
 
-        return obs, _state_all
+        return obs, agent_state
 
     def env_step(self, actions):
         actions = self.preprocess_actions(actions)
@@ -631,7 +637,7 @@ class MultiAgentA2CAgent(A2CAgent):
         start_time = time.time()
         total_time = 0
         rep_count = 0
-        self.obs, share_obs = self.env_reset()
+        self.obs, _ = self.env_reset()  # self.obs, share_obs = self.env_reset()
         self.curr_frames = self.batch_size_envs
 
         if self.multi_gpu:

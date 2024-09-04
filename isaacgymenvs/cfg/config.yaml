@@ -19,7 +19,7 @@ max_iterations: 10000
 #  'physx' or 'flex'
 physics_engine: 'physx'
 # whether to use cpu or gpu pipeline
-pipeline: 'gpu'
+pipeline: 'cpu'
 # device for running physics simulation
 sim_device: 'cuda:0'
 # device to run RL

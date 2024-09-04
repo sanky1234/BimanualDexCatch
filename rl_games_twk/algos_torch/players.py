@@ -47,6 +47,8 @@ class MultiAgentPpoPlayerContinuous(BasePlayer):
 
         self.build_configs = [catch_build_config,
                               throw_build_config.override(actions_num=self.num_a_actions)]
+        self.build_configs[0]['input_shape'] = self.build_configs[0]['input_shape']['catch']
+        self.build_configs[1]['input_shape'] = self.build_configs[1]['input_shape']['throw']
 
         assert len(self.build_configs) == self.num_multi_agents
 
@@ -57,6 +59,28 @@ class MultiAgentPpoPlayerContinuous(BasePlayer):
             model.eval()
             self.is_rnn = model.is_rnn()   # ?
             self.models.append(model)
+
+    def get_batch_size(self, obses, batch_size):
+        obs_shape = self.obs_shape[next(iter(self.obs_shape))]
+
+        if isinstance(obs_shape, dict):
+            obses = obses.get('obs', obses)
+            first_key = 'observation' if 'observation' in obses else next(iter(obs_shape))
+            obs_shape = obs_shape[first_key]
+            obses = obses[first_key]
+
+        if isinstance(obses, dict):
+            first_key = next(iter(obses))
+            obs = obses[first_key]
+        else:
+            obs = obses
+
+        if len(obs.size()) > len(obs_shape):
+            batch_size = obs.size(0)
+            self.has_batch_dimension = True
+
+        self.batch_size = batch_size
+        return batch_size
 
     def get_action(self, obs, is_deterministic = False):
         if self.has_batch_dimension == False:
