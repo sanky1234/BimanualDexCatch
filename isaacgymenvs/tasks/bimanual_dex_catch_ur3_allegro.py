@@ -686,7 +686,14 @@ class BimanualDexCatchUR3Allegro(VecTask):
         id_size_dict = {b.id: b.size for b in self.objects.values()}
         self.obj_id_size_keys = to_torch(list(id_size_dict.keys()), device=self.device)
 
-        id_size_list = [item for value in id_size_dict.values() for item in (value if isinstance(value, list) else [value])]
+        id_size_list = []
+        for value in id_size_dict.values():
+            if isinstance(value, list):
+                id_size_list.append((sum(value)/len(value)) * 0.5)  # ugly mean value
+                # for item in value:
+                #     id_size_list.append(item)
+            else:
+                id_size_list.append(value)
         self.obj_id_size_values = to_torch(id_size_list, device=self.device)
         # self.obj_id_size_values = to_torch(list(id_size_dict.values()), device=self.device)
 
