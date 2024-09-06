@@ -936,13 +936,14 @@ class BimanualDexCatchUR3Allegro(VecTask):
             self.reset_buf, self.progress_buf, self.actions, self._l_qd, self._r_qd, self.states, self.reward_settings, self.max_episode_length
         )
 
+        w_catch = 0.9
         if self.num_multi_agents > 1:
             rew_throw_buf, reset_buf = compute_throw_reward(
                 self.reset_buf, self.actions, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
 
             self.reset_buf = self.reset_buf | reset_buf
-            self.rew_bufs[:, 0] = 0.5 * rew_catch_buf
-            self.rew_bufs[:, 1] = 0.5 * rew_throw_buf
+            self.rew_bufs[:, 0] = w_catch * rew_catch_buf
+            self.rew_bufs[:, 1] = (1 - w_catch) * rew_throw_buf
         else:
             self.rew_buf = 1.0 * rew_catch_buf
 
@@ -1150,10 +1151,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
         this_object_state_all[env_ids, :] = sampled_obj_state
 
         # # linear/angular velocity randomization, m/s, radian/s
-        # this_object_state_all[env_ids, 7:10] = 1.0 * torch.tensor([5.0, 0.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
-        # this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7]) - 1.0
-        # this_object_state_all[env_ids, 9] = torch.abs(this_object_state_all[env_ids, 9]) + 1.0
-        # this_object_state_all[env_ids, 10:] = 1.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        this_object_state_all[env_ids, 7:10] = 1.0 * torch.tensor([5.0, 0.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7]) - 1.0
+        this_object_state_all[env_ids, 9] = torch.abs(this_object_state_all[env_ids, 9]) + 1.0
+        this_object_state_all[env_ids, 10:] = 1.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
 
         # Thrower actions
         # obj_pose = self.actions[env_ids, 44:51]
@@ -1161,8 +1162,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
         obj_rot_vel = self.actions[env_ids, 47:50]
 
         # this_object_state_all[env_ids, 0:7] = obj_pose
-        lin_scale = 27.78  # Max speed: 27.78 m/s, equivalent to 100 km/h (approximate speed of a fastball thrown by a pitcher)
-        rot_scale = 209.44  # Max 2000 RPM, representing the typical spin rate of a curveball thrown by a pitcher
+        # lin_scale = 27.78  # Max speed: 27.78 m/s, equivalent to 100 km/h (approximate speed of a fastball thrown by a pitcher)
+        # rot_scale = 209.44  # Max 2000 RPM, representing the typical spin rate of a curveball thrown by a pitcher
+        lin_scale = 10.0
+        rot_scale = 100.0
         this_object_state_all[env_ids, 7:10] += obj_lin_vel * lin_scale * 0.1
         this_object_state_all[env_ids, 10:13] += obj_rot_vel * rot_scale * 0.1
 
@@ -1336,7 +1339,7 @@ def compute_catch_reward(
     # reward for lifting cube
     temp_pos = states["object_pos"][ar_idx, object_idx, 2]
     object_height = temp_pos - reward_settings["table_height"]
-    object_lifted = (object_height - object_size) > object_size #* 0.5 * 1.6    # cube: 0.04,
+    object_lifted = (object_height - object_size) > object_size * 0.5 * 1.6    # cube: 0.04,
     lift_reward = object_lifted
 
     l_arm_contact_n_mag_mean = torch.mean(torch.norm(states["left_arm_contact_n_mag"], dim=-1), dim=-1)
@@ -1360,7 +1363,7 @@ def compute_catch_reward(
                - reward_settings["act_penalty_scale"] * action_penalty)
 
     # Compute resets
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size),
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size * 0.5 + 1e-2),
                             torch.ones_like(reset_buf), reset_buf)
 
     return rewards, reset_buf
@@ -1372,13 +1375,13 @@ def compute_throw_reward(
 ):
     # type: (Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor]
 
-    # _obj_lin_vel = actions[:, 51:54]
-    # _obj_rot_vel = actions[:, 54:57]
-    #
-    # progress_mask = torch.where(progress_buf == 0, 1, 0)
+    progress_mask = torch.where(progress_buf==0, 1, -1)
 
-    # obj_lin_vel = _obj_lin_vel * progress_mask.unsqueeze(1)
-    # obj_rot_vel = _obj_rot_vel * progress_mask.unsqueeze(1)
+    _act_obj_lin_vel = actions[:, 44:47]
+    _act_obj_rot_vel = actions[:, 47:50]
+
+    act_obj_lin_vel = torch.norm(_act_obj_lin_vel, dim=-1) * progress_mask
+    act_obj_rot_vel = torch.norm(_act_obj_rot_vel, dim=-1) * progress_mask
 
     object_idx = states["object_idx_vec"].type(torch.long)
     object_size = states["object_size_vec"]
@@ -1403,8 +1406,12 @@ def compute_throw_reward(
 
     obj_throw_reward = 0.5 * obj_pos_vel_reward + 0.5 * obj_rot_vel_reward
 
+    act_lin_vel_reward = torch.tanh(1.0 * act_obj_lin_vel)
+    act_rot_vel_reward = torch.tanh(1.0 * act_obj_rot_vel)
+    act_reward = 0.5 * act_lin_vel_reward + 0.5 * act_rot_vel_reward
+
     # reward_settings["r_hand_scale"]
-    rewards = (1.0 * obj_throw_reward)
+    rewards = (0.8 * obj_throw_reward + 0.2 * act_reward)
 
     # Compute resets
     reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height > 3.0),

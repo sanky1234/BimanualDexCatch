@@ -13,13 +13,13 @@ seed: 42
 torch_deterministic: False
 
 # set the maximum number of learning iterations to train for. overrides default per-environment setting
-max_iterations: 50000
+max_iterations: 20000
 
 ## Device config
 #  'physx' or 'flex'
 physics_engine: 'physx'
 # whether to use cpu or gpu pipeline
-pipeline: 'cpu'
+pipeline: 'gpu'
 # device for running physics simulation
 sim_device: 'cuda:0'
 # device to run RL
@@ -35,7 +35,7 @@ num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one
 # test - if set, run policy in inference mode (requires setting checkpoint to load)
 test: False
 # used to set checkpoint path, full path should be provided from runs folder: (e.g., runs/model_folder/nn/model_name.pth)
-checkpoint: 'runs/MA_BimanualDexCatchUR3Allegro_2024-09-05_14-34-05/nn/last_MA_BimanualDexCatchUR3Allegro_2024-09-05_14-34-05_ep_20000_rew__6.72_.pth'
+checkpoint: ''
 # set sigma when restoring network
 sigma: ''
 # set to True to use multi-gpu training

@@ -104,6 +104,8 @@ def launch_rlg_hydra(cfg: DictConfig):
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_name = f"{cfg.wandb_name}_{time_str}"
 
+    cfg.pipeline = 'cpu'    # bugs found in gpu pipeline
+
     # ensure checkpoints can be specified as relative paths
     if cfg.checkpoint:
         cfg.checkpoint = to_absolute_path(cfg.checkpoint)
@@ -239,7 +241,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         return max(last_files, key=extract_episode_number, default=None)
 
     # Test Config
-    folder = 'MA_BimanualDexCatchUR3Allegro_2024-09-05_14-34-05'
+    folder = 'MA_BimanualDexCatchUR3Allegro_2024-09-06_16-31-37'
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64
