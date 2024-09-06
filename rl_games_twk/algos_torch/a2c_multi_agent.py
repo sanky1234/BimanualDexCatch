@@ -19,6 +19,7 @@ from gym import spaces
 import numpy as np
 
 from .a2c_continuous import A2CAgent
+from .running_mean_std import RunningMeanStd
 from ..common.a2c_common import A2CBase
 
 
@@ -127,6 +128,41 @@ class MultiAgentA2CAgent(A2CAgent):
         self.init_rnn_from_model(model)
         optimizer = optim.Adam(model.parameters(), float(self.last_lr_list[agent_id]), eps=1e-08, weight_decay=self.weight_decay)
         return model, optimizer
+
+    def set_full_state_weights(self, weights, set_epoch=True):
+
+        self.set_weights(weights)
+        if set_epoch:
+            self.epoch_num = weights['epoch']
+            self.frame = weights['frame']
+
+        if self.has_central_value:
+            self.central_value_net.load_state_dict(weights['assymetric_vf_nets'])
+
+        for agent_id in range(self.num_multi_agents):
+            self.optimizers[agent_id].load_state_dict(weights['optimizer'+str(agent_id)])
+
+        self.last_mean_rewards = weights.get('last_mean_rewards', -1000000000)
+
+        if self.vec_env is not None:
+            env_state = weights.get('env_state', None)
+            self.vec_env.set_env_state(env_state)
+
+    def set_weights(self, weights):
+        for agent_id in range(self.num_multi_agents):
+            self.models[agent_id].load_state_dict(weights['model'+str(agent_id)])
+        self.set_stats_weights(weights)
+
+    def set_stats_weights(self, weights):
+        if self.normalize_rms_advantage:
+            self.advantage_mean_std.load_state_dic(weights['advantage_mean_std'])
+        for agent_id in range(self.num_multi_agents):
+            if self.normalize_input and 'running_mean_std' in weights:
+                self.models[agent_id].running_mean_std.load_state_dict(weights['models'+str(agent_id)]['running_mean_std'])
+            if self.normalize_value and 'normalize_value' in weights:
+                self.models[agent_id].value_mean_std.load_state_dict(weights['models'+str(agent_id)]['reward_mean_std'])
+        if self.mixed_precision and 'scaler' in weights:
+            self.scaler.load_state_dict(weights['scaler'])
 
     def obs_to_tensors(self, obs):
         obs_is_dict = isinstance(obs, dict)
