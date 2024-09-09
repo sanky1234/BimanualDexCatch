@@ -72,4 +72,4 @@ params:
 
     # for test
     player:
-      games_num: 10000
+      games_num: 1000

@@ -114,6 +114,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # multi-agent RL (Heterogenuous Agent)
         self.is_multi_agent = self.cfg["env"].get("isMultiAgent", False)
+        self.uniform_test = False
+        if self.uniform_test:
+            print("**** Uniform Test Mode ****")
 
         self.max_episode_length = self.cfg["env"]["episodeLength"]
 
@@ -223,6 +226,12 @@ class BimanualDexCatchUR3Allegro(VecTask):
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
         if self.is_multi_agent:
+            # reward weight
+            self.alpha = 1.0
+            self.init_alpha = 1.0
+            self.final_alpha = 0.5
+            self.total_epochs = 10000
+
             self.num_multi_agents = 2
 
             self.obs_space = spaces.Dict({"catch": spaces.Box(np.ones(self.num_obs) * -np.Inf, np.ones(self.num_obs) * np.Inf),
@@ -931,19 +940,23 @@ class BimanualDexCatchUR3Allegro(VecTask):
     def get_all_env_ids(self):
         return torch.ones(self.num_envs, device=self.device, dtype=torch.long)
 
+    def decay_alpha(self, curr_epoch):
+        self.alpha = self.init_alpha - (self.init_alpha - self.final_alpha) * (min(curr_epoch, self.total_epochs) / self.total_epochs)
+        if curr_epoch % 100 == 0:
+            print("Current alpha: {} / {}".format(self.alpha, curr_epoch))
+
     def compute_reward(self, actions):
         rew_catch_buf, self.reset_buf[:] = compute_catch_reward(
             self.reset_buf, self.progress_buf, self.actions, self._l_qd, self._r_qd, self.states, self.reward_settings, self.max_episode_length
         )
 
-        w_catch = 0.9
         if self.num_multi_agents > 1:
             rew_throw_buf, reset_buf = compute_throw_reward(
                 self.reset_buf, self.actions, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
 
             self.reset_buf = self.reset_buf | reset_buf
-            self.rew_bufs[:, 0] = w_catch * rew_catch_buf
-            self.rew_bufs[:, 1] = (1 - w_catch) * rew_throw_buf
+            self.rew_bufs[:, 0] = self.alpha * rew_catch_buf
+            self.rew_bufs[:, 1] = (1 - self.alpha) * rew_throw_buf
         else:
             self.rew_buf = 1.0 * rew_catch_buf
 
@@ -997,7 +1010,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._object_size_vec[env_ids] = self.obj_id_size_values[indices].clone()
 
         if self.is_multi_agent:
-            if self.actions is None:
+            if self.actions is None or self.uniform_test:
                 self._reset_uniform_random_object_state(obj='A', env_ids=env_ids)
             else:
                 self._reset_adversarial_random_object_state(obj='A', env_ids=env_ids)
