@@ -35,7 +35,11 @@ env:
   controlType: joint_tor  # options are {joint_tor, osc}
 
   # multi_agent configs
-  isMultiAgent: False
+  multiAgent:
+    isMultiAgent: False
+    uniformTest: False
+    alpha: 0.9
+    finalAlpha: 0.5
 
   asset:
     assetRoot: "../../assets"

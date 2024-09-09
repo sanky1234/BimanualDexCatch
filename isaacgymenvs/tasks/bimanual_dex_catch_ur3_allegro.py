@@ -113,8 +113,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.cfg = cfg
 
         # multi-agent RL (Heterogenuous Agent)
-        self.is_multi_agent = self.cfg["env"].get("isMultiAgent", False)
-        self.uniform_test = False
+        self.is_multi_agent = self.cfg["env"]["multiAgent"].get("isMultiAgent", False)
+        self.uniform_test = self.cfg["env"]["multiAgent"].get("uniformTest", False)
         if self.uniform_test:
             print("**** Uniform Test Mode ****")
 
@@ -227,9 +227,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         if self.is_multi_agent:
             # reward weight
-            self.alpha = 0.5
+            self.alpha = self.cfg["env"]["multiAgent"].get("alpha", 0.9) \
+                if not self.uniform_test else 1.0
             self.init_alpha = self.alpha
-            self.final_alpha = 0.9
+            self.final_alpha = self.cfg["env"]["multiAgent"].get("finalAlpha", 0.5)
             self.total_epochs = 10000
             print("Alpha: {}, init_alpha: {}, final_alpha: {}, total_epoch: {}"
                   .format(self.alpha, self.init_alpha, self.final_alpha, self.total_epochs))

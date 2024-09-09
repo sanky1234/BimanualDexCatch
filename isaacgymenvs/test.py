@@ -171,7 +171,7 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     rlg_config_dict = omegaconf_to_dict(cfg.train)
     rlg_config_dict = preprocess_train_config(cfg, rlg_config_dict)
-    cfg.task.env.isMultiAgent = True if cfg.train.params.algo.name == "a2c_multi_agent" else False
+    cfg.task.env.multiAgent.isMultiAgent = True if cfg.train.params.algo.name == "a2c_multi_agent" else False
 
     observers = [RLGPUAlgoObserver()]
 
@@ -246,6 +246,9 @@ def launch_rlg_hydra(cfg: DictConfig):
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64
     cfg.headless = False
+
+    # Uniform Test mode setup
+    cfg.task.env.multiAgent.uniformTest = True
 
     # Tensor board
     print_log = True
