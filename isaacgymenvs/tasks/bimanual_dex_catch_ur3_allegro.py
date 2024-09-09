@@ -227,10 +227,12 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         if self.is_multi_agent:
             # reward weight
-            self.alpha = 1.0
-            self.init_alpha = 1.0
-            self.final_alpha = 0.5
+            self.alpha = 0.5
+            self.init_alpha = self.alpha
+            self.final_alpha = 0.9
             self.total_epochs = 10000
+            print("Alpha: {}, init_alpha: {}, final_alpha: {}, total_epoch: {}"
+                  .format(self.alpha, self.init_alpha, self.final_alpha, self.total_epochs))
 
             self.num_multi_agents = 2
 
@@ -955,8 +957,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
                 self.reset_buf, self.actions, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
 
             self.reset_buf = self.reset_buf | reset_buf
-            self.rew_bufs[:, 0] = self.alpha * rew_catch_buf
-            self.rew_bufs[:, 1] = (1 - self.alpha) * rew_throw_buf
+            mean_rew = self.alpha * rew_catch_buf + (1 - self.alpha) * rew_throw_buf
+            self.rew_bufs[:] = mean_rew.unsqueeze(-1).repeat(1, self.rew_bufs.shape[1])
         else:
             self.rew_buf = 1.0 * rew_catch_buf
 
