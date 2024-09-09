@@ -241,7 +241,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         return max(last_files, key=extract_episode_number, default=None)
 
     # Test Config
-    folder = 'MA_BimanualDexCatchUR3Allegro_2024-09-09_15-07-33'
+    folder = 'MA_BimanualDexCatchUR3Allegro_2024-09-09_18-31-35'
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64

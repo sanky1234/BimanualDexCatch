@@ -121,6 +121,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.max_episode_length = self.cfg["env"]["episodeLength"]
 
         self.action_scale = self.cfg["env"]["actionScale"]
+        self.noise_scale = self.cfg["env"]["noiseScale"]
         self.start_position_noise = self.cfg["env"]["startPositionNoise"]
         self.start_rotation_noise = self.cfg["env"]["startRotationNoise"]
         self.ur3_position_noise = self.cfg["env"]["ur3PositionNoise"]
@@ -1102,27 +1103,27 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # Initialize rotation, which is no rotation (quat w = 1)
         sampled_obj_state[:, 6] = 1.0
         sampled_obj_state[:, :2] = biased_obj_xy_state.unsqueeze(0) + torch.cat([
-            0.5 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5),
-            2.0 * self.start_position_noise * (torch.rand(num_resets, 1, device=self.device) - 0.5)
+            0.5 * self.start_position_noise * self.noise_scale * (torch.rand(num_resets, 1, device=self.device) - 0.5),
+            2.0 * self.start_position_noise * self.noise_scale * (torch.rand(num_resets, 1, device=self.device) - 0.5)
         ], dim=-1)
 
         sampled_obj_state[:, 2] = torch.tensor([1.5], device=self.device) + \
-                                  2.0 * self.start_position_noise * (torch.rand(num_resets, device=self.device) - 0.5)
+                                  2.0 * self.start_position_noise * self.noise_scale * (torch.rand(num_resets, device=self.device) - 0.5)
 
         # Sample rotation value
         if self.start_rotation_noise > 0:
             aa_rot = torch.zeros(num_resets, 3, device=self.device)
-            aa_rot[:, 2] = 2.0 * self.start_rotation_noise * (torch.rand(num_resets, device=self.device) - 0.5)
+            aa_rot[:, 2] = 2.0 * self.start_rotation_noise * self.noise_scale * (torch.rand(num_resets, device=self.device) - 0.5)
             sampled_obj_state[:, 3:7] = quat_mul(axisangle2quat(aa_rot), sampled_obj_state[:, 3:7])
 
         # Lastly, set these sampled values as the new init state
         this_object_state_all[env_ids, :] = sampled_obj_state
 
         # linear/angular velocity randomization, m/s, radian/s
-        this_object_state_all[env_ids, 7:10] = 1.0 * torch.tensor([5.0, 2.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        this_object_state_all[env_ids, 7:10] = 1.0 * self.noise_scale * torch.tensor([5.0, 2.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
         this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7]) - 1.0
         this_object_state_all[env_ids, 9] = torch.abs(this_object_state_all[env_ids, 9]) + 1.0
-        this_object_state_all[env_ids, 10:] = 10.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        this_object_state_all[env_ids, 10:] = 10.0 * self.noise_scale * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
 
     def _reset_adversarial_random_object_state(self, obj, env_ids):
         # If env_ids is None, we reset all the envs

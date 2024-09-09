@@ -13,6 +13,7 @@ env:
   clipObservations: 5.0
   clipActions: 1.0
 
+  noiseScale: 1.0
   startPositionNoise: 0.25
   startRotationNoise: 0.785
   ur3PositionNoise: 0.0
