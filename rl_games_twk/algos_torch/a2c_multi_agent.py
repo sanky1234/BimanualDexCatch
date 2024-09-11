@@ -582,6 +582,39 @@ class MultiAgentA2CAgent(A2CAgent):
 
         return batch_dict
 
+    def evaluate_actions(self, dataset, agent_id):
+        all_data = [dataset[i] for i in range(len(dataset))]
+        action_log_probs_list = []
+        for data in all_data:
+            input_dict = data
+            # input_dict = {}
+            # for key in all_data[0].keys():
+            #     input_dict[key] = torch.stack([item[key] for item in all_data])
+
+            obs_batch = input_dict['obs']
+            actions_batch = input_dict['actions']
+
+            batch_dict = {
+                'is_train': True,
+                'prev_actions': actions_batch,
+                'obs': obs_batch,
+            }
+
+            rnn_masks = None
+            if self.is_rnn:
+                rnn_masks = input_dict['rnn_masks']
+                batch_dict['rnn_states'] = input_dict['rnn_states']
+                batch_dict['seq_length'] = self.seq_length
+
+                if self.zero_rnn_on_done:
+                    batch_dict['dones'] = input_dict['dones']
+
+            with torch.cuda.amp.autocast(enabled=self.mixed_precision):
+                res_dict = self.models[agent_id](batch_dict)
+                action_log_probs = res_dict['prev_neglogp']
+                action_log_probs_list.append(action_log_probs)
+        return torch.cat(action_log_probs_list, dim=0)
+
     def train_epoch(self):
         A2CBase.train_epoch(self)   # Grandparent class
 
@@ -617,8 +650,17 @@ class MultiAgentA2CAgent(A2CAgent):
         entropies = []
         kls = []
 
-        for mini_ep in range(0, self.mini_epochs_num):
-            for agent_id in torch.randperm(self.num_multi_agents):  # randomized agent id, TODO
+        action_dim = 1
+        factor = torch.ones(self.batch_size, action_dim, device=self.device)
+
+        for agent_id in torch.randperm(self.num_multi_agents):
+            # action_dim = self.dataset_list[agent_id].values_dict["actions"].shape[1]
+            self.set_train()
+            self.dataset_list[agent_id].update_factor(factor)
+
+            old_actions_logprob = self.evaluate_actions(self.dataset_list[agent_id], agent_id)
+
+            for mini_ep in range(0, self.mini_epochs_num):
                 ep_kls = []     # per agent
                 for i in range(len(self.dataset_list[agent_id])):
                     a_loss, c_loss, entropy, kl, last_lr_list, lr_mul, cmu, csigma, b_loss = self.train_actor_critic(self.dataset_list[agent_id][i], agent_id)
@@ -652,6 +694,10 @@ class MultiAgentA2CAgent(A2CAgent):
                 self.diagnostics.mini_epoch(self, mini_ep)
                 if self.normalize_input:
                     self.models[agent_id].running_mean_std.eval()  # don't need to update statstics more than one miniepoch
+
+            new_actions_logprob = self.evaluate_actions(self.dataset_list[agent_id], agent_id)
+            action_prod = torch.exp((new_actions_logprob.detach() - old_actions_logprob.detach())).reshape(-1, action_dim).sum(dim=-1, keepdim=True)
+            factor = factor * action_prod.detach()
 
         update_time_end = time.time()
         play_time = play_time_end - play_time_start
@@ -829,7 +875,7 @@ class MultiAgentA2CAgent(A2CAgent):
             mu = res_dict['mus']
             sigma = res_dict['sigmas']
 
-            a_loss = self.actor_loss_func(old_action_log_probs_batch, action_log_probs, advantage, self.ppo, curr_e_clip)
+            a_loss = self.actor_loss_func(old_action_log_probs_batch, action_log_probs, advantage, self.ppo, curr_e_clip, self.dataset_list[agent_id].factor)
 
             if self.has_value_loss:
                 c_loss = common_losses.critic_loss(self.models[agent_id], value_preds_batch, values, curr_e_clip, return_batch,

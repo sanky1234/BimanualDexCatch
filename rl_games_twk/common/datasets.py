@@ -22,6 +22,12 @@ class PPODataset(Dataset):
 
         self.special_names = ['rnn_states']
 
+        # for HAPPO
+        self.factor = torch.ones(self.batch_size, 1, device=self.device)
+
+    def update_factor(self, factor):
+        self.factor.copy_(factor)
+
     def update_values_dict(self, values_dict):
         self.values_dict = values_dict     
 
