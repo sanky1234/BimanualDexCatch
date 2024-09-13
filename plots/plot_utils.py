@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.python.framework import tensor_util
 
+import yaml
+
 class SmoothedPlot:
     def __init__(self, smoothing_factor=0.6):
         self.smoothing_factor = smoothing_factor
@@ -41,10 +43,8 @@ class SmoothedPlot:
         plt.legend()
         plt.show()
 
-if __name__ == '__main__':
-    target_list = ['MA_BimanualDexCatchUR3Allegro_2024-08-29_17-56-35',
-                   'SA_BimanualDexCatchUR3Allegro_2024-08-30_12-11-09']
 
+def draw_learning_curve(target_list):
     current_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.join(current_dir, '../isaacgymenvs/runs')
     model_dirs = os.listdir(root_dir)
@@ -70,3 +70,27 @@ if __name__ == '__main__':
             plotter.load_data(iterations, rewards, label)
 
     plotter.plot()
+
+def draw_eval_plot():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.join(current_dir, '../isaacgymenvs/runs')
+    model_dirs = os.listdir(root_dir)
+
+if __name__ == '__main__':
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.join(current_dir, '../isaacgymenvs/evaluation')
+    map_path = os.path.join(root_dir, 'experimentMapAll.yaml')
+
+    with open(map_path, 'r') as file:
+        yaml_dict = yaml.safe_load(file)
+
+    print(yaml_dict['map'].keys())
+
+    target_tags = ['SA', 'SA_pbt']
+    target_dict = {key: target_map_all[key] for key in target_tags if key in target_map_all}
+    print(target_dict)
+
+    # target_list = ['MA_BimanualDexCatchUR3Allegro_2024-09-10_09-23-44',
+    #                'MA_BimanualDexCatchUR3Allegro_2024-09-10_18-13-24']
+
+    # draw_learning_curve(target_list=target_list)

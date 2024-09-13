@@ -8,6 +8,9 @@ from torch import nn
 import numpy as np
 import copy
 
+import os
+import csv
+
 from .a2c_multi_agent import OverridableDict
 
 
@@ -17,7 +20,6 @@ def rescale_actions(low, high, action):
     scaled_action = action * d + m
     return scaled_action
 
-# TODO, here
 class MultiAgentPpoPlayerContinuous(BasePlayer):
 
     def __init__(self, params):
@@ -131,10 +133,33 @@ class MultiAgentPpoPlayerContinuous(BasePlayer):
         if self.env is not None and env_state is not None:
             self.env.set_env_state(env_state)
 
+    def save_rew_to_csv(self, path, total_rew_list):
+        # save total_rew_list as .csv format with the name including total_n_games,
+        if all(isinstance(item, (float, int)) for item in total_rew_list):
+            total_rew_list = [[item] for item in total_rew_list]  # Convert to list of lists
+
+        base_path = os.path.dirname(os.path.dirname(path))
+        eval_folder_path = os.path.join(base_path, "eval")
+
+        if not os.path.exists(eval_folder_path):
+            os.makedirs(eval_folder_path)
+
+        # Define the csv file path (with noise scale value, epinum)
+        ns_val = str(self.env.noise_scale)  # ex) ns1.5 --> noise_scale=1.5
+        games_num = str(self.games_num)
+        file_name = (os.path.splitext(os.path.basename(base_path))[0] +
+                     '_ns' + ns_val + '_epi' + games_num + '.csv')
+        csv_file_path = os.path.join(eval_folder_path, file_name)
+
+        # Write the list data to the csv file
+        with open(csv_file_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerows(total_rew_list)
+
     def reset(self):
         self.init_rnn()
 
-    def run(self):
+    def run(self, args=None):
         n_games = self.games_num
         render = self.render_env
         n_game_life = self.n_game_life
@@ -158,6 +183,8 @@ class MultiAgentPpoPlayerContinuous(BasePlayer):
             has_masks = self.env.has_action_mask()
 
         self.wait_for_checkpoint()
+
+        total_rew_list = []
 
         need_init_rnn = self.is_rnn
         for _ in range(n_games):
@@ -207,6 +234,7 @@ class MultiAgentPpoPlayerContinuous(BasePlayer):
                             s[:, all_done_indices, :] = s[:,
                                                           all_done_indices, :] * 0.0
 
+                    total_rew_list += cr[done_indices].flatten().tolist()
                     cur_rewards = cr[done_indices].sum().item()
                     cur_steps = steps[done_indices].sum().item()
 
@@ -243,6 +271,7 @@ class MultiAgentPpoPlayerContinuous(BasePlayer):
         else:
             print('av reward:', sum_rewards / games_played * n_game_life,
                   'av steps:', sum_steps / games_played * n_game_life)
+            self.save_rew_to_csv(path=args["checkpoint"], total_rew_list=total_rew_list)
 
 
 class PpoPlayerContinuous(BasePlayer):

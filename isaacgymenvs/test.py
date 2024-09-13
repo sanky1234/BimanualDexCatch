@@ -30,6 +30,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import hydra
+import yaml
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -241,7 +242,27 @@ def launch_rlg_hydra(cfg: DictConfig):
         return max(last_files, key=extract_episode_number, default=None)
 
     # Test Config
-    folder = 'SA_BimanualDexCatchUR3Allegro_2024-09-09_18-29-46'
+    """
+    * Experiment model tags
+        * Single-Agent:
+            'SA', 'SA_pbt',
+        * Multi-Agent fixed alpha:
+            'MA_fix_1.0', 'MA_fix_0.9', 'MA_fix_0.8', 'MA_fix_0.7', 'MA_fix_0.6', 'MA_fix_0.5', 
+        * Multi-Agent fixed alpha with only big objects(gymball, board)
+            'MA_only_big_fix_0.7', 
+        * Multi-Agent decay alpha
+            'MA_decay_0.7', 'MA_decay_0.5',
+        * Hetero-Agent fixed alpha 
+            'HA_fix_0.9', 'HA_fix_0.8', 'HA_fix_0.7', 'HA_fix_0.6', 'HA_fix_0.5'
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    path_to_maps = os.path.join(current_dir, 'evaluation', 'experimentMapAll.yaml')
+    with open(path_to_maps, 'r') as file:
+        exp_model_dict = yaml.safe_load(file)['map']
+    target_tag = 'HA_fix_0.5'
+
+    # folder = 'SA_BimanualDexCatchUR3Allegro_2024-09-09_18-29-46'
+    folder = exp_model_dict[target_tag]
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64

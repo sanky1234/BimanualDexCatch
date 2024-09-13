@@ -284,8 +284,11 @@ class BasePlayer(object):
         if not os.path.exists(eval_folder_path):
             os.makedirs(eval_folder_path)
 
-        # Define the csv file path
-        file_name = os.path.splitext(os.path.basename(base_path))[0] + '.csv'
+        # Define the csv file path (with noise scale value, epinum)
+        ns_val = str(self.env.noise_scale)  # ex) ns1.5 --> noise_scale=1.5
+        games_num = str(self.games_num)
+        file_name = (os.path.splitext(os.path.basename(base_path))[0] +
+                     '_ns' + ns_val + '_epi' + games_num + '.csv')
         csv_file_path = os.path.join(eval_folder_path, file_name)
 
         # Write the list data to the csv file
@@ -293,7 +296,7 @@ class BasePlayer(object):
             writer = csv.writer(file)
             writer.writerows(total_rew_list)
 
-    def run(self, arg=None):
+    def run(self, args=None):
         n_games = self.games_num
         render = self.render_env
         n_game_life = self.n_game_life
@@ -406,7 +409,7 @@ class BasePlayer(object):
             print('av reward:', sum_rewards / games_played * n_game_life,
                   'av steps:', sum_steps / games_played * n_game_life,
                   'std:', statistics.stdev(total_rew_list))
-            self.save_rew_to_csv(path=arg["checkpoint"], total_rew_list=total_rew_list)
+            self.save_rew_to_csv(path=args["checkpoint"], total_rew_list=total_rew_list)
 
     def get_batch_size(self, obses, batch_size):
         obs_shape = self.obs_shape
