@@ -228,6 +228,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         if self.is_multi_agent:
             # reward weight
+            self.alpha_decay = self.cfg["env"]["multiAgent"].get("alpha_decay", False)
             self.alpha = self.cfg["env"]["multiAgent"].get("alpha", 0.9) \
                 if not self.uniform_test else 1.0
             self.init_alpha = self.alpha
@@ -945,9 +946,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
         return torch.ones(self.num_envs, device=self.device, dtype=torch.long)
 
     def decay_alpha(self, curr_epoch):
-        self.alpha = self.init_alpha - (self.init_alpha - self.final_alpha) * (min(curr_epoch, self.total_epochs) / self.total_epochs)
-        if curr_epoch % 100 == 0:
-            print("Current alpha: {} / {}".format(self.alpha, curr_epoch))
+        if self.alpha_decay:
+            self.alpha = self.init_alpha - (self.init_alpha - self.final_alpha) * (min(curr_epoch, self.total_epochs) / self.total_epochs)
+            if curr_epoch % 100 == 0:
+                print("Current alpha: {} / {}".format(self.alpha, curr_epoch))
 
     def compute_reward(self, actions):
         rew_catch_buf, self.reset_buf[:] = compute_catch_reward(

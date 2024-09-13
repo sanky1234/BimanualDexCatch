@@ -123,7 +123,7 @@ class Runner:
         player = self.create_player()
         _restore(player, args)
         _override_sigma(player, args)
-        player.run()
+        player.run(args)
 
     def create_player(self):
         return self.player_factory.create(self.algo_name, params=self.params)

@@ -39,8 +39,10 @@ env:
   multiAgent:
     isMultiAgent: False
     uniformTest: False
-    alpha: 0.9
+    alpha: 0.7    # default: 0.7
     finalAlpha: 0.5
+    alpha_decay: False
+    #algo: 'happo'  # ['mappo', happo]
 
   asset:
     assetRoot: "../../assets"

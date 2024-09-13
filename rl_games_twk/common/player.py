@@ -12,6 +12,9 @@ from rl_games_twk.common import vecenv
 from rl_games_twk.common import env_configurations
 from rl_games_twk.algos_torch import model_builder
 
+import statistics
+import csv
+
 
 class BasePlayer(object):
 
@@ -270,7 +273,27 @@ class BasePlayer(object):
             self.states = [torch.zeros((s.size()[0], self.batch_size, s.size(
             )[2]), dtype=torch.float32).to(self.device) for s in rnn_states]
 
-    def run(self):
+    def save_rew_to_csv(self, path, total_rew_list):
+        # save total_rew_list as .csv format with the name including total_n_games,
+        if all(isinstance(item, (float, int)) for item in total_rew_list):
+            total_rew_list = [[item] for item in total_rew_list]  # Convert to list of lists
+
+        base_path = os.path.dirname(os.path.dirname(path))
+        eval_folder_path = os.path.join(base_path, "eval")
+
+        if not os.path.exists(eval_folder_path):
+            os.makedirs(eval_folder_path)
+
+        # Define the csv file path
+        file_name = os.path.splitext(os.path.basename(base_path))[0] + '.csv'
+        csv_file_path = os.path.join(eval_folder_path, file_name)
+
+        # Write the list data to the csv file
+        with open(csv_file_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerows(total_rew_list)
+
+    def run(self, arg=None):
         n_games = self.games_num
         render = self.render_env
         n_game_life = self.n_game_life
@@ -282,6 +305,8 @@ class BasePlayer(object):
         games_played = 0
         has_masks = False
         has_masks_func = getattr(self.env, "has_action_mask", None) is not None
+
+        total_rew_list = []
 
         op_agent = getattr(self.env, "create_agent", None)
         if op_agent:
@@ -343,6 +368,7 @@ class BasePlayer(object):
                             s[:, all_done_indices, :] = s[:,
                                                           all_done_indices, :] * 0.0
 
+                    total_rew_list += cr[done_indices].flatten().tolist()
                     cur_rewards = cr[done_indices].sum().item()
                     cur_steps = steps[done_indices].sum().item()
 
@@ -378,7 +404,9 @@ class BasePlayer(object):
                   games_played * n_game_life, 'winrate:', sum_game_res / games_played * n_game_life)
         else:
             print('av reward:', sum_rewards / games_played * n_game_life,
-                  'av steps:', sum_steps / games_played * n_game_life)
+                  'av steps:', sum_steps / games_played * n_game_life,
+                  'std:', statistics.stdev(total_rew_list))
+            self.save_rew_to_csv(path=arg["checkpoint"], total_rew_list=total_rew_list)
 
     def get_batch_size(self, obses, batch_size):
         obs_shape = self.obs_shape

@@ -626,7 +626,7 @@ class MultiAgentA2CAgent(A2CAgent):
                 batch_dict = self.play_steps_rnn()
             else:
                 batch_dict_list = self.play_steps()
-                # self.vec_env.env.decay_alpha(self.epoch_num)    # decay alpha
+                self.vec_env.env.decay_alpha(self.epoch_num)
 
         play_time_end = time.time()
         update_time_start = time.time()
