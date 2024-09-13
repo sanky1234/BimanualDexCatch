@@ -74,6 +74,9 @@ def draw_learning_curve(target_list):
     plotter.plot()
 
 
+import matplotlib.pyplot as plt
+
+# Function to plot combined boxplot with enhanced Y-axis label styling
 def plot_combined_boxplot(data, target_keys):
     plt.figure(figsize=(12, 8))
 
@@ -102,18 +105,24 @@ def plot_combined_boxplot(data, target_keys):
     # Calculate and mark averages
     means = data.mean()  # Calculate the mean for each column
     for i, mean in enumerate(means):
-        plt.text(i + 1, mean, f'{mean:.2f}', horizontalalignment='center', color='black', weight='bold', fontsize=12)
+        plt.text(i + 1, mean, f'{mean:.2f}', horizontalalignment='center', color='black', weight='bold', fontsize=20)
 
     # Set custom X-axis labels with target_keys and increase font size
-    plt.xticks(ticks=range(1, len(target_keys) + 1), labels=target_keys, rotation=45, fontsize=12)
+    plt.xticks(ticks=range(1, len(target_keys) + 1), labels=target_keys, rotation=45, fontsize=24)
+
+    # Y-axis settings: increase font size, rotate label, and add 'Reward'
+    plt.yticks(fontsize=16)  # Increase font size for Y-axis numbers
+    plt.ylabel('Reward', fontsize=20, rotation=90)  # Y-axis label
 
     # Add gridlines and set their style
     plt.grid(True, linestyle='--', alpha=0.7)
 
-    plt.title('Catcher Reward at Noise Scale 1.0', fontsize=16)
+    # Set plot title
+    plt.title('Catcher Reward at Noise Scale 1.0', fontsize=24)
 
     plt.tight_layout()
     plt.show()
+
 
 def draw_eval_plot(target_dict):
     print("target_dict: ", target_dict)
@@ -156,12 +165,66 @@ def draw_eval_plot(target_dict):
         target_keys_sorted = sorted(target_keys, key=lambda x: custom_order.index(x))
         print("target_keys_sorted: ", target_keys_sorted)
         index_map = [target_keys.index(key) for key in custom_order]  # custom_order에 맞는 인덱스 찾기
-
-        # 열 값을 스왑하여 custom_order 순서에 맞게 재배치
         combined_data.iloc[:, :] = combined_data.iloc[:, index_map].values
-
-        # combined_data.iloc[:, [0, 3]] = combined_data.iloc[:, [3, 0]].values
         plot_combined_boxplot(combined_data, target_keys_sorted)
+
+
+# Adjust pandas display options to avoid truncation
+pd.set_option('display.max_colwidth', None)  # Prevent truncating long column names
+pd.set_option('display.max_rows', None)      # Show all rows without truncating
+pd.set_option('display.max_columns', None)   # Show all columns without truncating
+
+
+def print_mean_std(target_dict, custom_order):
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.join(current_dir, '../isaacgymenvs/runs')
+    model_dirs = os.listdir(root_dir)
+
+    results = []  # Store results as a list of dictionaries
+
+    for model_dir in model_dirs:
+        if model_dir in target_dict.values():
+            target_key = next(key for key, value in target_dict.items() if value == model_dir)
+            target_dir = os.path.join(root_dir, model_dir, 'eval')
+            _csvs = os.listdir(target_dir)
+
+            # sort as [ns1.0, ns1.2, ns1.5]
+            csvs = sorted(_csvs, key=lambda x: float(x.split('_ns')[1].split('_')[0]))
+            print(f"Processing key: {target_key}")
+
+            # Read and process each CSV file
+            for csv_file in csvs:
+                csv_path = os.path.join(target_dir, csv_file)
+                data = pd.read_csv(csv_path)  # Load the CSV data into a DataFrame
+
+                # Calculate mean and std for the entire DataFrame
+                mean_value = data.values.mean()  # Overall mean across all columns
+                std_value = data.values.std()  # Overall standard deviation across all columns
+
+                # Append the results as a dictionary, attaching the key to the CSV file name
+                results.append({
+                    'CSV File': f"{csv_file} (Key: {target_key})",  # Add key to CSV file name
+                    'Key': target_key,  # For sorting purposes
+                    'Mean': round(mean_value, 2),
+                    'Standard Deviation': round(std_value, 2)
+                })
+
+    # Convert the results list into a DataFrame for tabular display
+    result_df = pd.DataFrame(results)
+
+    # Reorder based on custom_order
+    result_df['Key'] = pd.Categorical(result_df['Key'], categories=custom_order, ordered=True)
+    result_df = result_df.sort_values('Key')  # Sort based on custom_order
+
+    # Drop the 'Key' column from the final output
+    result_df = result_df.drop(columns=['Key'])
+
+    # Format the DataFrame for single-line output for each row
+    pd.set_option('display.expand_frame_repr', False)  # Prevent splitting into multiple lines
+
+    # Print the DataFrame as a table
+    print("\nResults in tabular format (sorted by custom order):")
+    print(result_df)
 
 
 if __name__ == '__main__':
@@ -177,6 +240,14 @@ if __name__ == '__main__':
     with open(map_path, 'r') as file:
         target_map_dict = yaml.safe_load(file)['map']
 
-    target_tags = ['SA', 'SA_pbt', 'MA_fix_0.9', 'MA_decay_0.5', 'HA_fix_0.9']
+    target_tags = ['SA', 'SA_pbt',
+                   'MA_fix_1.0', 'MA_fix_0.9', 'MA_fix_0.8', 'MA_fix_0.7', 'MA_fix_0.6', 'MA_fix_0.5',
+                   'MA_decay_0.7', 'MA_decay_0.5',
+                   'HA_fix_0.9', 'HA_fix_0.5'
+                   ]
+    # 'HA_fix_0.9', 'HA_fix_0.8', 'HA_fix_0.7', 'HA_fix_0.6', 'HA_fix_0.5'
+
     target_dict = {key: target_map_dict[key] for key in target_tags if key in target_map_dict}
-    draw_eval_plot(target_dict=target_dict)
+    # draw_eval_plot(target_dict=target_dict)
+
+    print_mean_std(target_dict=target_dict, custom_order=target_tags)
