@@ -124,7 +124,7 @@ def plot_combined_boxplot(data, target_keys):
     plt.show()
 
 
-def draw_eval_plot(target_dict):
+def draw_eval_plot(target_dict, custom_order):
     print("target_dict: ", target_dict)
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -159,7 +159,7 @@ def draw_eval_plot(target_dict):
 
     # Plot combined boxplot if there is data
     if not combined_data.empty:
-        custom_order = ['SA', 'SA_pbt', 'MA_fix_0.9', 'MA_decay_0.5', 'HA_fix_0.9']
+        # custom_order = ['SA', 'SA_pbt', 'MA_fix_0.9', 'MA_decay_0.5', 'HA_fix_0.9']
         print("custom_order: ", custom_order)
         print("target_keys: ", target_keys)
         target_keys_sorted = sorted(target_keys, key=lambda x: custom_order.index(x))
@@ -240,14 +240,16 @@ if __name__ == '__main__':
     with open(map_path, 'r') as file:
         target_map_dict = yaml.safe_load(file)['map']
 
-    target_tags = ['SA', 'SA_pbt',
-                   'MA_fix_1.0', 'MA_fix_0.9', 'MA_fix_0.8', 'MA_fix_0.7', 'MA_fix_0.6', 'MA_fix_0.5',
-                   'MA_decay_0.7', 'MA_decay_0.5',
-                   'HA_fix_0.9', 'HA_fix_0.5'
-                   ]
+    # target_tags = ['SA', 'SA_pbt',
+    #                'MA_fix_1.0', 'MA_fix_0.9', 'MA_fix_0.8', 'MA_fix_0.7', 'MA_fix_0.6', 'MA_fix_0.5',
+    #                'MA_decay_0.7', 'MA_decay_0.5',
+    #                'HA_fix_0.9', 'HA_fix_0.5'
+    #                ]
+    # target_tags = ['SA', 'SA_pbt', 'MA_fix_0.7', 'MA_decay_0.7', 'HA_fix_0.7']
+    target_tags = ['MA_fix_1.0', 'MA_fix_0.9', 'MA_fix_0.8', 'MA_fix_0.7', 'MA_fix_0.6', 'MA_fix_0.5']
     # 'HA_fix_0.9', 'HA_fix_0.8', 'HA_fix_0.7', 'HA_fix_0.6', 'HA_fix_0.5'
 
     target_dict = {key: target_map_dict[key] for key in target_tags if key in target_map_dict}
-    # draw_eval_plot(target_dict=target_dict)
+    # draw_eval_plot(target_dict=target_dict, custom_order=target_tags)
 
     print_mean_std(target_dict=target_dict, custom_order=target_tags)

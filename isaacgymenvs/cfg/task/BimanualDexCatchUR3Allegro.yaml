@@ -13,7 +13,7 @@ env:
   clipObservations: 5.0
   clipActions: 1.0
 
-  noiseScale: 1.5
+  noiseScale: 1.0
   startPositionNoise: 0.25
   startRotationNoise: 0.785
   ur3PositionNoise: 0.0
@@ -39,7 +39,7 @@ env:
   multiAgent:
     isMultiAgent: False
     uniformTest: False
-    alpha: 0.8    # default: 0.7
+    alpha: 0.7    # default: 0.7
     finalAlpha: 0.5
     alpha_decay: False
     algo: 'happo'  # ['mappo', happo]

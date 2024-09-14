@@ -11,7 +11,7 @@ map:
   MA_decay_0.7: 'MA_BimanualDexCatchUR3Allegro_2024-09-12_09-34-40'
   MA_decay_0.5: 'MA_BimanualDexCatchUR3Allegro_2024-09-11_19-34-16'
   HA_fix_0.9: 'MA_BimanualDexCatchUR3Allegro_2024-09-12_00-29-08'
-  HA_fix_0.8: ''
-  HA_fix_0.7: ''
+  HA_fix_0.8: 'MA_BimanualDexCatchUR3Allegro_2024-09-13_19-35-34' # this is a noise scale 1.5 ver...
+  HA_fix_0.7: 'MA_BimanualDexCatchUR3Allegro_2024-09-13_08-12-18'
   HA_fix_0.6: ''
   HA_fix_0.5: 'MA_BimanualDexCatchUR3Allegro_2024-09-13_08-44-42'
