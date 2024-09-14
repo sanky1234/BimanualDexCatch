@@ -2,6 +2,7 @@ import os, glob
 import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
+from tensorflow.compiler.tf2xla.python.xla import key_value_sort
 from tensorflow.python.framework import tensor_util
 
 import pandas as pd
@@ -77,6 +78,18 @@ def draw_learning_curve(target_list):
 import matplotlib.pyplot as plt
 
 # Function to plot combined boxplot with enhanced Y-axis label styling
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
 def plot_combined_boxplot(data, target_keys):
     plt.figure(figsize=(12, 8))
 
@@ -105,10 +118,19 @@ def plot_combined_boxplot(data, target_keys):
     # Calculate and mark averages
     means = data.mean()  # Calculate the mean for each column
     for i, mean in enumerate(means):
-        plt.text(i + 1, mean, f'{mean:.2f}', horizontalalignment='center', color='black', weight='bold', fontsize=20)
+        # 마지막 박스(마지막 인덱스)에 대해서만 위치를 크게 조정
+        plt.text(i + 1, mean-70, f'{mean:.2f}', horizontalalignment='center', color='black', weight='bold', fontsize=15)
+        # if i == len(means) - 1:
+        #     plt.text(i + 1, mean + 2,  # 마지막 박스의 숫자를 더 위로 이동 (크게 조정)
+        #              f'{mean:.2f}', horizontalalignment='center', color='black', weight='bold', fontsize=20)
+        # else:
+        #     plt.text(i + 1, mean, f'{mean:.2f}', horizontalalignment='center', color='black', weight='bold', fontsize=20)
 
     # Set custom X-axis labels with target_keys and increase font size
-    plt.xticks(ticks=range(1, len(target_keys) + 1), labels=target_keys, rotation=45, fontsize=24)
+    # target_keys = ['SA', 'SA (PBT)', 'HA (fixed alpha=0.7)', 'HA (decay alpha=0.7)']
+    target_keys = ['HA (fixed alpha=1.0)', 'HA (fixed alpha=0.9)', 'HA (fixed alpha=0.8)',
+                   'HA (fixed alpha=0.7)', 'HA (fixed alpha=0.6)', 'HA (fixed alpha=0.5)']
+    plt.xticks(ticks=range(1, len(target_keys) + 1), labels=target_keys, rotation=30, fontsize=24)
 
     # Y-axis settings: increase font size, rotate label, and add 'Reward'
     plt.yticks(fontsize=16)  # Increase font size for Y-axis numbers
@@ -118,10 +140,11 @@ def plot_combined_boxplot(data, target_keys):
     plt.grid(True, linestyle='--', alpha=0.7)
 
     # Set plot title
-    plt.title('Catcher Reward at Noise Scale 1.0', fontsize=24)
+    plt.title('Catcher Reward at Noise Scale 1.0, (25th-75th Percentile Range)', fontsize=24)
 
     plt.tight_layout()
     plt.show()
+
 
 
 def draw_eval_plot(target_dict, custom_order):
@@ -159,14 +182,23 @@ def draw_eval_plot(target_dict, custom_order):
 
     # Plot combined boxplot if there is data
     if not combined_data.empty:
-        # custom_order = ['SA', 'SA_pbt', 'MA_fix_0.9', 'MA_decay_0.5', 'HA_fix_0.9']
         print("custom_order: ", custom_order)
         print("target_keys: ", target_keys)
         target_keys_sorted = sorted(target_keys, key=lambda x: custom_order.index(x))
         print("target_keys_sorted: ", target_keys_sorted)
-        index_map = [target_keys.index(key) for key in custom_order]  # custom_order에 맞는 인덱스 찾기
+
+        # Find the index order based on custom order
+        index_map = [target_keys.index(key) for key in custom_order]
         combined_data.iloc[:, :] = combined_data.iloc[:, index_map].values
-        plot_combined_boxplot(combined_data, target_keys_sorted)
+
+        # Calculate 25th and 75th percentiles for each column
+        lower_bound = combined_data.quantile(0.25)
+        upper_bound = combined_data.quantile(0.75)
+
+        # Filter data between 25th and 75th percentiles
+        filtered_data = combined_data.apply(lambda x: x[(x >= lower_bound[x.name]) & (x <= upper_bound[x.name])], axis=0)
+        plot_combined_boxplot(filtered_data, target_keys_sorted)
+
 
 
 # Adjust pandas display options to avoid truncation
@@ -245,11 +277,11 @@ if __name__ == '__main__':
     #                'MA_decay_0.7', 'MA_decay_0.5',
     #                'HA_fix_0.9', 'HA_fix_0.5'
     #                ]
-    # target_tags = ['SA', 'SA_pbt', 'MA_fix_0.7', 'MA_decay_0.7', 'HA_fix_0.7']
-    target_tags = ['MA_fix_1.0', 'MA_fix_0.9', 'MA_fix_0.8', 'MA_fix_0.7', 'MA_fix_0.6', 'MA_fix_0.5']
+    # target_tags = ['SA', 'SA_pbt', 'HA_fix_0.7', 'HA_decay_0.7']
+    target_tags = ['HA_fix_1.0', 'HA_fix_0.9', 'HA_fix_0.8', 'HA_fix_0.7', 'HA_fix_0.6', 'HA_fix_0.5']
     # 'HA_fix_0.9', 'HA_fix_0.8', 'HA_fix_0.7', 'HA_fix_0.6', 'HA_fix_0.5'
 
     target_dict = {key: target_map_dict[key] for key in target_tags if key in target_map_dict}
-    # draw_eval_plot(target_dict=target_dict, custom_order=target_tags)
+    draw_eval_plot(target_dict=target_dict, custom_order=target_tags)
 
-    print_mean_std(target_dict=target_dict, custom_order=target_tags)
+    # print_mean_std(target_dict=target_dict, custom_order=target_tags)
