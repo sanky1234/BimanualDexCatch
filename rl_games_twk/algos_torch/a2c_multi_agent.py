@@ -55,8 +55,6 @@ class MultiAgentA2CAgent(A2CAgent):
         self.game_shaped_rewards_list = []
 
         self.last_lr_list = [self.last_lr for _ in range(self.num_multi_agents)]
-        self.opt_algo = self.vec_env.env.cfg["env"]["multiAgent"]["algo"]
-        assert self.opt_algo in ['mappo', 'happo']
 
         batch_size = self.num_agents * self.num_actors
         current_rewards_shape = (batch_size, self.value_size)
@@ -656,11 +654,10 @@ class MultiAgentA2CAgent(A2CAgent):
         factor = torch.ones(self.batch_size, action_dim, device=self.device)
 
         for agent_id in torch.randperm(self.num_multi_agents):
-            if self.opt_algo == 'happo':
-                # action_dim = self.dataset_list[agent_id].values_dict["actions"].shape[1]
-                self.set_train()
-                self.dataset_list[agent_id].update_factor(factor)
-                old_actions_logprob = self.evaluate_actions(self.dataset_list[agent_id], agent_id)
+            # action_dim = self.dataset_list[agent_id].values_dict["actions"].shape[1]
+            self.set_train()
+            self.dataset_list[agent_id].update_factor(factor)
+            old_actions_logprob = self.evaluate_actions(self.dataset_list[agent_id], agent_id)
 
             for mini_ep in range(0, self.mini_epochs_num):
                 ep_kls = []     # per agent
@@ -697,10 +694,9 @@ class MultiAgentA2CAgent(A2CAgent):
                 if self.normalize_input:
                     self.models[agent_id].running_mean_std.eval()  # don't need to update statstics more than one miniepoch
 
-            if self.opt_algo == 'happo':
-                new_actions_logprob = self.evaluate_actions(self.dataset_list[agent_id], agent_id)
-                action_prod = torch.exp((new_actions_logprob.detach() - old_actions_logprob.detach())).reshape(-1, action_dim).sum(dim=-1, keepdim=True)
-                factor = factor * action_prod.detach()
+            new_actions_logprob = self.evaluate_actions(self.dataset_list[agent_id], agent_id)
+            action_prod = torch.exp((new_actions_logprob.detach() - old_actions_logprob.detach())).reshape(-1, action_dim).sum(dim=-1, keepdim=True)
+            factor = factor * action_prod.detach()
 
         update_time_end = time.time()
         play_time = play_time_end - play_time_start

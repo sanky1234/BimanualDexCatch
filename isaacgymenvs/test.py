@@ -259,7 +259,7 @@ def launch_rlg_hydra(cfg: DictConfig):
     path_to_maps = os.path.join(current_dir, 'evaluation', 'experimentMapAll.yaml')
     with open(path_to_maps, 'r') as file:
         exp_model_dict = yaml.safe_load(file)['map']
-    target_tag = 'HA_fix_0.8'
+    target_tag = 'HA_fix_0.7'
 
     # folder = 'SA_BimanualDexCatchUR3Allegro_2024-09-09_18-29-46'
     folder = exp_model_dict[target_tag]
