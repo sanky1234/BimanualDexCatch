@@ -271,9 +271,8 @@ def launch_rlg_hydra(cfg: DictConfig):
     cfg.task.env.numEnvs = 64
     cfg.headless = False
 
-    if hasattr(cfg.task.env, 'multiAgent'):
-        # Uniform Test mode setup
-        cfg.task.env.multiAgent.uniformTest = True
+    # Uniform Test mode setup
+    cfg.task.env.uniformTest = True
 
     # Tensor board
     print_log = True

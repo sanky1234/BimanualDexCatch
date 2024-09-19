@@ -112,8 +112,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         self.cfg = cfg
 
-        # event handling for evaluation
-        self.start_sim = False
+        self.controlled_experiment = self.cfg["env"].get("controlledExperiment", False)
+        self.num_controlled_experiment = self.cfg["env"].get("numControlledExperimentPerObject", 10)
 
         # multi-agent RL (Heterogenuous Agent)
         self.is_multi_agent = self.cfg["env"]["multiAgent"].get("isMultiAgent", False)
@@ -517,6 +517,29 @@ class BimanualDexCatchUR3Allegro(VecTask):
         table_stand_asset = self.gym.create_box(self.sim, *[table_stand_breadth, table_stand_length, table_stand_height], table_opts)
 
         self._create_assets()
+
+        if self.controlled_experiment:
+            self.ce_count = 0
+            self.ce_env = self.num_envs - 1
+            self.ce_indices = np.repeat(np.arange(len(self.objects)), self.num_controlled_experiment)
+            np.random.shuffle(self.ce_indices)
+
+            # check existing evaluation files
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            path_to_cont_exp = os.path.join(current_dir, '..', 'evaluation', 'controlled_object_reset.npy')
+
+            overwrite = False
+            if os.path.exists(path_to_cont_exp):
+                if overwrite:
+                    np.save(path_to_cont_exp, self.ce_indices)
+                    print("Indices for controlled environment has been saved.")
+                else:
+                    self.ce_indices = np.load(path_to_cont_exp)
+                    print("Indices for controlled environment has been loaded.")
+            else:
+                np.save(path_to_cont_exp, self.ce_indices)
+                print("Indices for controlled environment has been saved.")
+            print("Indices for Controlled Experiment: ", self.ce_indices)
 
         print("left ur3 body cnt: ", self.gym.get_asset_rigid_body_count(left_allegro_ur3_asset))
         print("right ur3 body cnt: ", self.gym.get_asset_rigid_body_count(right_allegro_ur3_asset))
@@ -1042,6 +1065,13 @@ class BimanualDexCatchUR3Allegro(VecTask):
         first_id = self.objects[list(self.objects.keys())[0]].id
         last_id = self.objects[list(self.objects.keys())[-1]].id + 1
         rand_obj_ids = torch.randint(low=first_id, high=last_id, size=(len(env_ids),), device=self.device)
+
+        if self.controlled_experiment and (self.ce_env in env_ids):     # use last environment for controlled exp
+            print("last env is reset!!!")
+            idx = torch.where(env_ids == self.ce_env)
+            ce_idx = self.ce_indices[self.ce_count]
+            rand_obj_ids[idx] = ce_idx + self._obj_ref_id
+            self.ce_count += 1
 
         self._object_idx_vec[env_ids] = rand_obj_ids.clone()
         indices = torch.searchsorted(self.obj_id_size_keys, rand_obj_ids)
