@@ -105,7 +105,9 @@ def launch_rlg_hydra(cfg: DictConfig):
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_name = f"{cfg.wandb_name}_{time_str}"
 
-    cfg.pipeline = 'cpu'    # bugs found in gpu pipeline
+    if hasattr(cfg.task.env, 'multiAgent'):
+        # Testing on CPU due to a reset error during random object respawn
+        cfg.pipeline = 'cpu'    # bugs found in gpu pipeline
 
     # ensure checkpoints can be specified as relative paths
     if cfg.checkpoint:
@@ -172,7 +174,8 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     rlg_config_dict = omegaconf_to_dict(cfg.train)
     rlg_config_dict = preprocess_train_config(cfg, rlg_config_dict)
-    cfg.task.env.multiAgent.isMultiAgent = True if cfg.train.params.algo.name == "a2c_multi_agent" else False
+    if hasattr(cfg.task.env, 'multiAgent'):
+        cfg.task.env.multiAgent.isMultiAgent = True if cfg.train.params.algo.name == "a2c_multi_agent" else False
 
     observers = [RLGPUAlgoObserver()]
 
@@ -259,17 +262,18 @@ def launch_rlg_hydra(cfg: DictConfig):
     path_to_maps = os.path.join(current_dir, 'evaluation', 'experimentMapAll.yaml')
     with open(path_to_maps, 'r') as file:
         exp_model_dict = yaml.safe_load(file)['map']
-    target_tag = 'HA_fix_0.8'
+    target_tag = 'HA_fix_0.7'
 
-    # folder = 'SA_BimanualDexCatchUR3Allegro_2024-09-09_18-29-46'
+    # folder = 'SA_AllegroKukaPPO_2024-09-19_15-38-32'
     folder = exp_model_dict[target_tag]
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64
     cfg.headless = False
 
-    # Uniform Test mode setup
-    cfg.task.env.multiAgent.uniformTest = True
+    if hasattr(cfg.task.env, 'multiAgent'):
+        # Uniform Test mode setup
+        cfg.task.env.multiAgent.uniformTest = True
 
     # Tensor board
     print_log = True

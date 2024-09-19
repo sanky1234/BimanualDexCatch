@@ -112,6 +112,9 @@ class BimanualDexCatchUR3Allegro(VecTask):
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         self.cfg = cfg
 
+        # event handling for evaluation
+        self.start_sim = False
+
         # multi-agent RL (Heterogenuous Agent)
         self.is_multi_agent = self.cfg["env"]["multiAgent"].get("isMultiAgent", False)
         self.uniform_test = self.cfg["env"]["multiAgent"].get("uniformTest", False)
@@ -296,6 +299,25 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Refresh tensors
         self._refresh()
+
+        # viewer camera initial setting for result recording
+        if self.viewer:
+            from scipy.spatial.transform import Rotation as R
+            # desired viewer camera pose
+            cam_pos = gymapi.Vec3(22.9, 22.2, 2.01)
+            cam_rot = np.array([0.75, -0.33, -0.23, 0.52])
+
+            r = R.from_quat(cam_rot)
+            forward_vector = np.array([0, 0, 1])
+            cam_direction = r.apply(forward_vector)
+
+            distance = 10.0
+            cam_target = gymapi.Vec3(
+                cam_pos.x + distance * cam_direction[0],
+                cam_pos.y + distance * cam_direction[1],
+                cam_pos.z + distance * cam_direction[2]
+            )
+            self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
     def create_sim(self):
         self.sim_params.up_axis = gymapi.UP_AXIS_Z
@@ -884,6 +906,16 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._global_indices = torch.arange(self.num_envs * num_actors, dtype=torch.int32,
                                             device=self.device).view(self.num_envs, -1)
         self._object_shift_count = torch.ones(self.num_envs, dtype=torch.uint8, device=self.device) * -1
+
+    # Uncomment to retrieve the current viewer camera transformation
+    # def render(self):
+    #     cam_trans = self.gym.get_viewer_camera_transform(self.viewer, None)
+    #     cam_pos = np.array([cam_trans.p.x, cam_trans.p.y, cam_trans.p.z])
+    #     cam_rot = np.array([cam_trans.r.x, cam_trans.r.y, cam_trans.r.z, cam_trans.r.w])
+    #     print("cam_pos: ", cam_pos)
+    #     print("cam_rot: ", cam_rot)
+    #
+    #     super().render()
 
     def _update_states(self):
 

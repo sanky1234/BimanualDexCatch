@@ -181,7 +181,8 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     rlg_config_dict = omegaconf_to_dict(cfg.train)
     rlg_config_dict = preprocess_train_config(cfg, rlg_config_dict)
-    cfg.task.env.multiAgent.isMultiAgent = True if cfg.train.params.algo.name == "a2c_multi_agent" else False
+    if hasattr(cfg.task.env, 'multiAgent'):
+        cfg.task.env.multiAgent.isMultiAgent = True if cfg.train.params.algo.name == "a2c_multi_agent" else False
 
     observers = [RLGPUAlgoObserver()]
 
@@ -211,7 +212,8 @@ def launch_rlg_hydra(cfg: DictConfig):
         os.environ['MASTER_ADDR'] = 'localhost'
         os.environ['MASTER_PORT'] = '12355'
 
-    cfg.task.env.multiAgent.uniformTest = False     # always false in train mode
+    if hasattr(cfg.task.env, 'multiAgent'):
+        cfg.task.env.multiAgent.uniformTest = False     # always false in train mode
     # convert CLI arguments into dictionary
     # create runner and set the settings
     runner = build_runner(MultiObserver(observers))
