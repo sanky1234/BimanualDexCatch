@@ -518,29 +518,6 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         self._create_assets()
 
-        if self.controlled_experiment:
-            self.ce_count = 0
-            self.ce_env = self.num_envs - 1
-            self.ce_indices = np.repeat(np.arange(len(self.objects)), self.num_controlled_experiment)
-            np.random.shuffle(self.ce_indices)
-
-            # check existing evaluation files
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            path_to_cont_exp = os.path.join(current_dir, '..', 'evaluation', 'controlled_object_reset.npy')
-
-            overwrite = False
-            if os.path.exists(path_to_cont_exp):
-                if overwrite:
-                    np.save(path_to_cont_exp, self.ce_indices)
-                    print("Indices for controlled environment has been saved.")
-                else:
-                    self.ce_indices = np.load(path_to_cont_exp)
-                    print("Indices for controlled environment has been loaded.")
-            else:
-                np.save(path_to_cont_exp, self.ce_indices)
-                print("Indices for controlled environment has been saved.")
-            print("Indices for Controlled Experiment: ", self.ce_indices)
-
         print("left ur3 body cnt: ", self.gym.get_asset_rigid_body_count(left_allegro_ur3_asset))
         print("right ur3 body cnt: ", self.gym.get_asset_rigid_body_count(right_allegro_ur3_asset))
 
@@ -929,6 +906,49 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self._global_indices = torch.arange(self.num_envs * num_actors, dtype=torch.int32,
                                             device=self.device).view(self.num_envs, -1)
         self._object_shift_count = torch.ones(self.num_envs, dtype=torch.uint8, device=self.device) * -1
+
+        self.setup_controlled_experiment()
+
+    def save_or_load_data(self, file_path, data, overwrite=False):
+        if os.path.exists(file_path):
+            if overwrite:
+                np.save(file_path, data)
+                print(f"[CE] Data has been overwritten and saved to {file_path}.")
+            else:
+                loaded_data = np.load(file_path)
+                print(f"[CE] Data has been loaded from {file_path}.")
+                return loaded_data
+        else:
+            np.save(file_path, data)
+            print(f"[CE] Data has been saved to {file_path}.")
+        return data
+
+    def setup_controlled_experiment(self):
+        if self.controlled_experiment:
+            self.ce_count = 0
+            self.ce_env = self.num_envs - 1
+
+            # controlled experiment indices
+            self.ce_indices = np.repeat(np.arange(len(self.objects)), self.num_controlled_experiment)
+            np.random.shuffle(self.ce_indices)
+
+            ce_obj_state_list = []
+            for i in range(len(self.ce_indices)):
+                # controlled experiment uniform random pose & velocity
+                self._reset_uniform_random_object_state(obj='A', env_ids=[self.ce_env])
+                ce_obj_state = self._init_object_state[self.ce_env]
+                ce_obj_state_list.append(ce_obj_state)
+            self.ce_states = torch.stack(ce_obj_state_list)
+
+            # check existing evaluation files
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            path_to_indices = os.path.join(current_dir, '..', 'evaluation', 'controlled_exp_object_indices.npy')
+            path_to_obj_state = os.path.join(current_dir, '..', 'evaluation', 'controlled_exp_object_states.npy')
+
+            self.ce_indices = self.save_or_load_data(file_path=path_to_indices, data=self.ce_indices, overwrite=False)
+            self.ce_states = self.save_or_load_data(file_path=path_to_obj_state, data=self.ce_states.numpy(), overwrite=False)
+            print("[CE] Indices for Controlled Experiment: ", self.ce_indices)
+            print("[CE] States for Controlled Experiment: ", self.ce_states)
 
     # Uncomment to retrieve the current viewer camera transformation
     # def render(self):
