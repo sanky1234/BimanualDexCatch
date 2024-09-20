@@ -113,7 +113,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.cfg = cfg
 
         self.controlled_experiment = self.cfg["env"].get("controlledExperiment", False)
-        self.num_controlled_experiment = self.cfg["env"].get("numControlledExperimentPerObject", 10)
+        self.num_controlled_experiment_per_object = self.cfg["env"].get("numControlledExperimentPerObject", 10)
+        self.sim_start = False
 
         # multi-agent RL (Heterogenuous Agent)
         self.is_multi_agent = self.cfg["env"]["multiAgent"].get("isMultiAgent", False)
@@ -929,7 +930,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
             self.ce_env = self.num_envs - 1
 
             # controlled experiment indices
-            self.ce_indices = np.repeat(np.arange(len(self.objects)), self.num_controlled_experiment)
+            self.ce_indices = np.repeat(np.arange(len(self.objects)), self.num_controlled_experiment_per_object)
             np.random.shuffle(self.ce_indices)
 
             ce_obj_state_list = []
@@ -1354,6 +1355,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
     def post_physics_step(self):
+        if self.controlled_experiment and not self.sim_start:
+            user_input = input('go??')
+            if user_input.lower() == 'y':
+                self.sim_start = True
         self.progress_buf += 1
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
