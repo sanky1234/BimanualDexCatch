@@ -117,7 +117,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # multi-agent RL (Heterogenuous Agent)
         self.is_multi_agent = self.cfg["env"]["multiAgent"].get("isMultiAgent", False)
-        self.uniform_test = self.cfg["env"]["multiAgent"].get("uniformTest", False)
+        self.uniform_test = self.cfg["env"].get("uniformTest", False)
         if self.uniform_test:
             print("**** Uniform Test Mode ****")
 
@@ -936,7 +936,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
             for i in range(len(self.ce_indices)):
                 # controlled experiment uniform random pose & velocity
                 self._reset_uniform_random_object_state(obj='A', env_ids=[self.ce_env])
-                ce_obj_state = self._init_object_state[self.ce_env]
+                ce_obj_state = self._init_object_state[self.ce_env].clone()
                 ce_obj_state_list.append(ce_obj_state)
             self.ce_states = torch.stack(ce_obj_state_list)
 
@@ -947,6 +947,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
             self.ce_indices = self.save_or_load_data(file_path=path_to_indices, data=self.ce_indices, overwrite=False)
             self.ce_states = self.save_or_load_data(file_path=path_to_obj_state, data=self.ce_states.numpy(), overwrite=False)
+            self.ce_states = torch.from_numpy(self.ce_states)
             print("[CE] Indices for Controlled Experiment: ", self.ce_indices)
             print("[CE] States for Controlled Experiment: ", self.ce_states)
 
@@ -1086,11 +1087,14 @@ class BimanualDexCatchUR3Allegro(VecTask):
         last_id = self.objects[list(self.objects.keys())[-1]].id + 1
         rand_obj_ids = torch.randint(low=first_id, high=last_id, size=(len(env_ids),), device=self.device)
 
-        if self.controlled_experiment and (self.ce_env in env_ids):     # use last environment for controlled exp
+        idx = None
+        if self.controlled_experiment and self.uniform_test and (self.ce_env in env_ids):     # use last environment for controlled exp
             print("last env is reset!!!")
-            idx = torch.where(env_ids == self.ce_env)
+            idx = torch.where(env_ids == self.ce_env)[0].item()
             ce_idx = self.ce_indices[self.ce_count]
             rand_obj_ids[idx] = ce_idx + self._obj_ref_id
+            self._init_object_state[env_ids[idx]] = self.ce_states[self.ce_count]
+            print("curr pose: ", self.ce_states[self.ce_count])
             self.ce_count += 1
 
         self._object_idx_vec[env_ids] = rand_obj_ids.clone()
@@ -1099,11 +1103,11 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         if self.is_multi_agent:
             if self.actions is None or self.uniform_test:
-                self._reset_uniform_random_object_state(obj='A', env_ids=env_ids)
+                self._reset_uniform_random_object_state(obj='A', env_ids=env_ids[:idx])
             else:
                 self._reset_adversarial_random_object_state(obj='A', env_ids=env_ids)
         else:
-            self._reset_uniform_random_object_state(obj='A', env_ids=env_ids)
+            self._reset_uniform_random_object_state(obj='A', env_ids=env_ids[:idx])
 
         _rand_obj_ids = rand_obj_ids - self._obj_ref_id
         self._target_obj_state[env_ids, _rand_obj_ids] = self._init_object_state[env_ids].clone()
