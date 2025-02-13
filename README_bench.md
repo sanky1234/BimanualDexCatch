@@ -1,12 +1,11 @@
-# [ICRA 2025] Learning Dexterous Bimanual Catch Skills through Adversarial-Cooperative Heterogeneous-Agent Reinforcement Learning
+# Isaac Gym Benchmark Environments
 
-[Paper]() | [Videos](https://youtu.be/LbzgZB7IQuY?si=VSCWraJeeeyx7fkY)
+[Website](https://developer.nvidia.com/isaac-gym) | [Technical Paper](https://arxiv.org/abs/2108.10470) | [Videos](https://sites.google.com/view/isaacgym-nvidia)
 
 
 ### About this repository
 
-This repository contains the experimental code for the paper [Bimanual Catching Skill Learning](), presented at ICRA 2025. 
-This implementation is based on the [IsaacGymBenchmarks](https://github.com/isaac-sim/IsaacGymEnvs) framework and utilizes a custom-built rl_games_twk library for the implementation of the heterogeneous-agent reinforcement learning(HARL) version of rl_games.
+This repository contains example RL environments for the NVIDIA Isaac Gym high performance environments described [in our NeurIPS 2021 Datasets and Benchmarks paper](https://openreview.net/forum?id=fgFBtYgJQX_)
 
 
 ### Installation
