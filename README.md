@@ -2,9 +2,10 @@
 
 [Paper]() | [Videos](https://youtu.be/LbzgZB7IQuY?si=VSCWraJeeeyx7fkY)
 
-![success_catch1](imgs/github_gifs00000332.gif)
-![success_catch2](imgs/github_gifs00000740.gif)
-![success_catch3](imgs/github_gifs00001164.gif)
+<img src="images/github_gifs00000332.gif" width="100%">
+<img src="images/github_gifs00000740.gif" width="100%">
+<img src="images/github_gifs00001164.gif" width="100%">
+
 
 ### About this repository
 
