@@ -2,11 +2,15 @@
 
 [Paper]() | [Videos](https://youtu.be/LbzgZB7IQuY?si=VSCWraJeeeyx7fkY)
 
+![success_catch1](imgs/github_gifs00000332.gif)
+![success_catch2](imgs/github_gifs00000740.gif)
+![success_catch3](imgs/github_gifs00001164.gif)
 
 ### About this repository
 
 This repository contains the experimental code for the paper [Bimanual Catching Skill Learning](), presented at ICRA 2025. 
-This implementation is based on the [IsaacGymBenchmarks](https://github.com/isaac-sim/IsaacGymEnvs) framework and utilizes a custom-built rl_games_twk library for the implementation of the heterogeneous-agent reinforcement learning(HARL) version of rl_games.
+This implementation is based on the [IsaacGymBenchmarks](https://github.com/isaac-sim/IsaacGymEnvs) framework and utilizes a custom-built rl_games_twk library 
+for the implementation of the heterogeneous-agent reinforcement learning(HARL) version of [rl_games](https://github.com/Denys88/rl_games?tab=readme-ov-file).
 
 
 ### Installation
