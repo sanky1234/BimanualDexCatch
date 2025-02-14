@@ -99,6 +99,9 @@ def launch_rlg_hydra(cfg: DictConfig):
     from isaacgymenvs.learning import amp_network_builder
     import isaacgymenvs
 
+    # for multi-agent RL
+    from isaacgymenvs.utils.marl_utils import MultiAgentRLGPUEnv
+
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_name = f"{cfg.wandb_name}_{time_str}"
 
@@ -144,7 +147,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         return envs
 
     env_configurations.register('rlgpu', {
-        'vecenv_type': 'RLGPU',
+        'vecenv_type': 'MARLGPU' if cfg.train.params.algo.name == "a2c_multi_agent" else "RLGPU",
         'env_creator': lambda **kwargs: create_isaacgym_env(**kwargs),
     })
 
@@ -152,7 +155,6 @@ def launch_rlg_hydra(cfg: DictConfig):
     dict_cls = ige_env_cls.dict_obs_cls if hasattr(ige_env_cls, 'dict_obs_cls') and ige_env_cls.dict_obs_cls else False
 
     if dict_cls:
-        
         obs_spec = {}
         actor_net_cfg = cfg.train.params.network
         obs_spec['obs'] = {'names': list(actor_net_cfg.inputs.keys()), 'concat': not actor_net_cfg.name == "complex_net", 'space_name': 'observation_space'}
@@ -162,12 +164,13 @@ def launch_rlg_hydra(cfg: DictConfig):
         
         vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: ComplexObsRLGPUEnv(config_name, num_actors, obs_spec, **kwargs))
     else:
-
         vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
+        vecenv.register('MARLGPU', lambda config_name, num_actors, **kwargs: MultiAgentRLGPUEnv(config_name, num_actors, **kwargs))
 
     # dump config dict
     if not cfg.test:
-        experiment_dir = os.path.join('runs', cfg.train.params.config.name +
+        algo = 'MA_' if cfg.train.params.algo.name == 'a2c_multi_agent' else 'SA_'
+        experiment_dir = os.path.join('runs', algo + cfg.train.params.config.name +
                                       '_{date:%Y-%m-%d_%H-%M-%S}'.format(date=datetime.now()))
 
         os.makedirs(experiment_dir, exist_ok=True)
@@ -178,6 +181,8 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     rlg_config_dict = omegaconf_to_dict(cfg.train)
     rlg_config_dict = preprocess_train_config(cfg, rlg_config_dict)
+    if hasattr(cfg.task.env, 'multiAgent'):
+        cfg.task.env.multiAgent.isMultiAgent = True if cfg.train.params.algo.name == "a2c_multi_agent" else False
 
     observers = [RLGPUAlgoObserver()]
 
@@ -207,6 +212,8 @@ def launch_rlg_hydra(cfg: DictConfig):
         os.environ['MASTER_ADDR'] = 'localhost'
         os.environ['MASTER_PORT'] = '12355'
 
+    if hasattr(cfg.task.env, 'multiAgent'):
+        cfg.task.env.multiAgent.uniformTest = False     # always false in train mode
     # convert CLI arguments into dictionary
     # create runner and set the settings
     runner = build_runner(MultiObserver(observers))
@@ -222,4 +229,18 @@ def launch_rlg_hydra(cfg: DictConfig):
 
 
 if __name__ == "__main__":
+    """
+    * In the BimanualDexCatchUR3AllegroPPO.yaml,  make the following adjustments based on the learning mode:
+    [Single-Agent Learning]    
+        params:
+          seed: ${...seed}
+          algo:
+            name: a2c_continuous    # <-- here!
+    
+    [Multi-Agent Learning]
+        params:
+          seed: ${...seed}
+          algo:
+            name: a2c_multi_agent    # <-- here!
+    """
     launch_rlg_hydra()

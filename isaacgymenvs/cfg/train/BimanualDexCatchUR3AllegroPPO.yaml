@@ -1,7 +1,7 @@
 params:
   seed: ${...seed}
   algo:
-    name: a2c_continuous
+    name: a2c_multi_agent  # [a2c_multi_agent, a2c_continuous, a2c_discrete, sac]
 
   model:
     name: continuous_a2c_logstd
@@ -72,4 +72,4 @@ params:
 
     # for test
     player:
-      games_num: 10000
+      games_num: 20000

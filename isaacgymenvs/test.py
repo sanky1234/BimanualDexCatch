@@ -30,6 +30,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import hydra
+import yaml
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -98,9 +99,15 @@ def launch_rlg_hydra(cfg: DictConfig):
     from isaacgymenvs.learning import amp_network_builder
     import isaacgymenvs
 
+    # for multi-agent RL
+    from isaacgymenvs.utils.marl_utils import MultiAgentRLGPUEnv
 
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_name = f"{cfg.wandb_name}_{time_str}"
+
+    if hasattr(cfg.task.env, 'multiAgent'):
+        # Testing on CPU due to a reset error during random object respawn
+        cfg.pipeline = 'cpu'    # bugs found in gpu pipeline
 
     # ensure checkpoints can be specified as relative paths
     if cfg.checkpoint:
@@ -144,7 +151,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         return envs
 
     env_configurations.register('rlgpu', {
-        'vecenv_type': 'RLGPU',
+        'vecenv_type': 'MARLGPU' if cfg.train.params.algo.name == "a2c_multi_agent" else "RLGPU",
         'env_creator': lambda **kwargs: create_isaacgym_env(**kwargs),
     })
 
@@ -162,11 +169,13 @@ def launch_rlg_hydra(cfg: DictConfig):
         
         vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: ComplexObsRLGPUEnv(config_name, num_actors, obs_spec, **kwargs))
     else:
-
         vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
+        vecenv.register('MARLGPU', lambda config_name, num_actors, **kwargs: MultiAgentRLGPUEnv(config_name, num_actors, **kwargs))
 
     rlg_config_dict = omegaconf_to_dict(cfg.train)
     rlg_config_dict = preprocess_train_config(cfg, rlg_config_dict)
+    if hasattr(cfg.task.env, 'multiAgent'):
+        cfg.task.env.multiAgent.isMultiAgent = True if cfg.train.params.algo.name == "a2c_multi_agent" else False
 
     observers = [RLGPUAlgoObserver()]
 
@@ -236,11 +245,49 @@ def launch_rlg_hydra(cfg: DictConfig):
         return max(last_files, key=extract_episode_number, default=None)
 
     # Test Config
-    folder = 'BimanualDexCatchUR3Allegro_2024-07-16_16-25-49'
+    """
+    * Experiment model tags
+        * Single-Agent:
+            'SA', 'SA_pbt',
+        * Multi-Agent fixed alpha:
+            'MA_fix_1.0', 'MA_fix_0.9', 'MA_fix_0.8', 'MA_fix_0.7', 'MA_fix_0.6', 'MA_fix_0.5', 
+        * Multi-Agent fixed alpha with only big objects(gymball, board)
+            'MA_only_big_fix_0.7', 
+        * Multi-Agent decay alpha
+            'MA_decay_0.7', 'MA_decay_0.5',
+        * Hetero-Agent fixed alpha 
+            'HA_fix_0.9', 'HA_fix_0.8', 'HA_fix_0.7', 'HA_fix_0.6', 'HA_fix_0.5'
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    path_to_maps = os.path.join(current_dir, 'evaluation', 'experimentMapAll.yaml')
+    with open(path_to_maps, 'r') as file:
+        exp_model_dict = yaml.safe_load(file)['map']
+    target_tag = 'HA_fix_0.7'
+
+    # folder = 'SA_AllegroKukaPPO_2024-09-19_15-38-32'
+    folder = exp_model_dict[target_tag]
     path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/nn/'
     cfg.checkpoint = path + find_latest_last_element(path=path, best=True)
     cfg.task.env.numEnvs = 64
     cfg.headless = False
+
+    # Uniform Test mode setup
+    cfg.task.env.uniformTest = True
+
+    # Tensor board
+    print_log = True
+    if print_log:
+        # http://localhost:6006
+
+        from tensorboard import program
+        log_path = os.path.dirname(os.path.abspath(__file__)) + '/runs/' + folder + '/summaries/'
+
+        tb = program.TensorBoard()
+        tb.configure(argv=[None, '--logdir', log_path])
+
+        url = tb.launch()
+        print(f"TensorBoard is running at {url}")
+
     runner.run({
         'train': not cfg.test,
         'play': cfg.test,

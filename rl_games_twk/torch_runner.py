@@ -8,6 +8,7 @@ import torch
 from rl_games_twk.common import object_factory
 from rl_games_twk.common import tr_helpers
 
+from rl_games_twk.algos_torch import a2c_multi_agent
 from rl_games_twk.algos_torch import a2c_continuous
 from rl_games_twk.algos_torch import a2c_discrete
 from rl_games_twk.algos_torch import players
@@ -34,12 +35,14 @@ class Runner:
 
     def __init__(self, algo_observer=None):
         self.algo_factory = object_factory.ObjectFactory()
+        self.algo_factory.register_builder('a2c_multi_agent', lambda **kwargs: a2c_multi_agent.MultiAgentA2CAgent(**kwargs))
         self.algo_factory.register_builder('a2c_continuous', lambda **kwargs : a2c_continuous.A2CAgent(**kwargs))
         self.algo_factory.register_builder('a2c_discrete', lambda **kwargs : a2c_discrete.DiscreteA2CAgent(**kwargs)) 
         self.algo_factory.register_builder('sac', lambda **kwargs: sac_agent.SACAgent(**kwargs))
         #self.algo_factory.register_builder('dqn', lambda **kwargs : dqnagent.DQNAgent(**kwargs))
 
         self.player_factory = object_factory.ObjectFactory()
+        self.player_factory.register_builder('a2c_multi_agent', lambda **kwargs: players.MultiAgentPpoPlayerContinuous(**kwargs))
         self.player_factory.register_builder('a2c_continuous', lambda **kwargs : players.PpoPlayerContinuous(**kwargs))
         self.player_factory.register_builder('a2c_discrete', lambda **kwargs : players.PpoPlayerDiscrete(**kwargs))
         self.player_factory.register_builder('sac', lambda **kwargs : players.SACPlayer(**kwargs))
@@ -120,7 +123,7 @@ class Runner:
         player = self.create_player()
         _restore(player, args)
         _override_sigma(player, args)
-        player.run()
+        player.run(args)
 
     def create_player(self):
         return self.player_factory.create(self.algo_name, params=self.params)

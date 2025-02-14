@@ -267,6 +267,9 @@ class VecTask(Env):
 
         self.obs_dict = {}
 
+        # multi-agent params
+        self.num_multi_agents = 1   # default: 1
+
     def set_viewer(self):
         """Create the viewer."""
 
@@ -393,19 +396,26 @@ class VecTask(Env):
         # fill time out buffer: set to 1 if we reached the max episode length AND the reset buffer is 1. Timeout == 1 makes sense only if the reset buffer is 1.
         self.timeout_buf = (self.progress_buf >= self.max_episode_length - 1) & (self.reset_buf != 0)
 
-        # randomize observations
-        if self.dr_randomizations.get('observations', None):
-            self.obs_buf = self.dr_randomizations['observations']['noise_lambda'](self.obs_buf)
-
         self.extras["time_outs"] = self.timeout_buf.to(self.rl_device)
 
-        self.obs_dict["obs"] = torch.clamp(self.obs_buf, -self.clip_obs, self.clip_obs).to(self.rl_device)
+        if self.num_multi_agents > 1:
+            for agent_id in range(self.num_multi_agents):
+                if self.dr_randomizations.get('observations', None):
+                    self.obs_bufs[:, agent_id] = self.dr_randomizations['observations']['noise_lambda'](self.obs_bufs["obs"+str(agent_id)])
+                self.obs_dict["obs"+str(agent_id)] = torch.clamp(self.obs_bufs["obs"+str(agent_id)], -self.clip_obs, self.clip_obs).to(self.rl_device)
+        else:
+            if self.dr_randomizations.get('observations', None):
+                self.obs_buf = self.dr_randomizations['observations']['noise_lambda'](self.obs_buf)
+
+            self.obs_dict["obs"] = torch.clamp(self.obs_buf, -self.clip_obs, self.clip_obs).to(self.rl_device)
 
         # asymmetric actor-critic
         if self.num_states > 0:
             self.obs_dict["states"] = self.get_state()
 
-        return self.obs_dict, self.rew_buf.to(self.rl_device), self.reset_buf.to(self.rl_device), self.extras
+        return (self.obs_dict,
+                self.rew_bufs.to(self.rl_device) if self.num_multi_agents > 1 else self.rew_buf.to(self.rl_device),
+                self.reset_buf.to(self.rl_device), self.extras)
 
     def zero_actions(self) -> torch.Tensor:
         """Returns a buffer with zero actions.
@@ -429,7 +439,11 @@ class VecTask(Env):
         Returns:
             Observation dictionary
         """
-        self.obs_dict["obs"] = torch.clamp(self.obs_buf, -self.clip_obs, self.clip_obs).to(self.rl_device)
+        if self.num_multi_agents > 1:
+            for agent_id in range(self.num_multi_agents):
+                self.obs_dict["obs"+str(agent_id)] = torch.clamp(self.obs_bufs["obs"+str(agent_id)], -self.clip_obs, self.clip_obs).to(self.rl_device)
+        else:
+            self.obs_dict["obs"] = torch.clamp(self.obs_buf, -self.clip_obs, self.clip_obs).to(self.rl_device)
 
         # asymmetric actor-critic
         if self.num_states > 0:

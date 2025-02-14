@@ -36,12 +36,18 @@ def smoothed_actor_loss(old_action_neglog_probs_batch, action_neglog_probs, adva
     return a_loss
 
 
-def actor_loss(old_action_neglog_probs_batch, action_neglog_probs, advantage, is_ppo, curr_e_clip):
+def actor_loss(old_action_neglog_probs_batch, action_neglog_probs, advantage, is_ppo, curr_e_clip, factor=None):
     if is_ppo:
-        ratio = torch.exp(old_action_neglog_probs_batch - action_neglog_probs)
-        surr1 = advantage * ratio
-        surr2 = advantage * torch.clamp(ratio, 1.0 - curr_e_clip, 1.0 + curr_e_clip)
-        a_loss = torch.max(-surr1, -surr2)
+        if factor is not None:  # HAPPO for multi-agent
+            ratio = torch.exp(old_action_neglog_probs_batch - action_neglog_probs)
+            surr1 = advantage * ratio
+            surr2 = advantage * torch.clamp(ratio, 1.0 - curr_e_clip, 1.0 + curr_e_clip)
+            a_loss = factor * torch.max(-surr1, -surr2)
+        else:
+            ratio = torch.exp(old_action_neglog_probs_batch - action_neglog_probs)
+            surr1 = advantage * ratio
+            surr2 = advantage * torch.clamp(ratio, 1.0 - curr_e_clip, 1.0 + curr_e_clip)
+            a_loss = torch.max(-surr1, -surr2)
     else:
         a_loss = (action_neglog_probs * advantage)
 

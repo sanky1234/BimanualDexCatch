@@ -42,7 +42,10 @@ import torch.nn.functional as F
 
 from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp, quat_from_euler_xyz, quat_apply
 from isaacgymenvs.tasks.base.vec_task import VecTask
+from isaacgymenvs.tasks.base.multi_vec_task import MultiVecTask
 from isaacgymenvs.tasks.utils.general_utils import deg2rad
+
+from gym import spaces
 
 
 def get_assets(attr_dict):
@@ -109,9 +112,20 @@ class BimanualDexCatchUR3Allegro(VecTask):
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         self.cfg = cfg
 
+        self.controlled_experiment = self.cfg["env"].get("controlledExperiment", False)
+        self.num_controlled_experiment_per_object = self.cfg["env"].get("numControlledExperimentPerObject", 10)
+        self.sim_start = False
+
+        # multi-agent RL (Heterogenuous Agent)
+        self.is_multi_agent = self.cfg["env"]["multiAgent"].get("isMultiAgent", False)
+        self.uniform_test = self.cfg["env"].get("uniformTest", False)
+        if self.uniform_test:
+            print("**** Uniform Test Mode ****")
+
         self.max_episode_length = self.cfg["env"]["episodeLength"]
 
         self.action_scale = self.cfg["env"]["actionScale"]
+        self.noise_scale = self.cfg["env"]["noiseScale"]
         self.start_position_noise = self.cfg["env"]["startPositionNoise"]
         self.start_rotation_noise = self.cfg["env"]["startRotationNoise"]
         self.ur3_position_noise = self.cfg["env"]["ur3PositionNoise"]
@@ -140,9 +154,13 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # obs if joint: cube_pose (7) + joints (6) + fingers (16) = 29
         self.cfg["env"]["numObservations"] = 30 if self.control_type == "osc" else 253
 
+        # Define the observations and actions of the thrower
+        # initial state of the object to be thrown (pose, Xd, Rd)
+        self.cfg["env"]["numThrowerActions"] = 6 if self.is_multi_agent else 0
+
         # actions if osc: delta EEF if OSC (6) + finger torques (16) = 22
         # actions if joint: joint torques (6) + finger torques (16) = 22
-        self.cfg["env"]["numActions"] = 22 if self.control_type == "osc" else 44
+        self.cfg["env"]["numActions"] = 22 if self.control_type == "osc" else 44 + self.cfg["env"]["numThrowerActions"]
 
         # Values to be filled in at runtime
         self.states = {}                        # will be dict filled with relevant states to use for reward calculation
@@ -212,6 +230,35 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
+        if self.is_multi_agent:
+            # reward weight
+            self.alpha_decay = self.cfg["env"]["multiAgent"].get("alpha_decay", False)
+            self.alpha = self.cfg["env"]["multiAgent"].get("alpha", 0.9) \
+                if not self.uniform_test else 1.0
+            self.init_alpha = self.alpha
+            self.final_alpha = self.cfg["env"]["multiAgent"].get("finalAlpha", 0.5)
+            self.total_epochs = 10000
+            print("Alpha: {}, init_alpha: {}, final_alpha: {}, total_epoch: {}"
+                  .format(self.alpha, self.init_alpha, self.final_alpha, self.total_epochs))
+
+            self.num_multi_agents = 2
+
+            self.obs_space = spaces.Dict({"catch": spaces.Box(np.ones(self.num_obs) * -np.Inf, np.ones(self.num_obs) * np.Inf),
+                                          "throw": spaces.Box(np.ones(self.num_obs+1) * -np.Inf, np.ones(self.num_obs+1) * np.Inf)})
+
+            self.rew_bufs = torch.zeros(self.num_envs, self.num_multi_agents, device=self.device, dtype=torch.float)
+            self.obs_bufs = {}
+            self.obs_bufs.update({
+                "obs0": torch.zeros(self.num_envs, self.num_obs, device=self.device, dtype=torch.float),
+                "obs1": torch.zeros(self.num_envs, self.num_obs + 1, device=self.device, dtype=torch.float)
+            })
+
+            # remove buffers for single-agent
+            del self.obs_buf
+            del self.rew_buf
+
+        self.num_a_actions = self.cfg["env"]["numThrowerActions"]
+
         # UR3 defaults
         self.default_left_ur3_pose = {"forward": [deg2rad(30.0), deg2rad(-90.0), deg2rad(110.0), deg2rad(-40.0), deg2rad(90.0), deg2rad(90.0)],
                                       "downward": [deg2rad(0.0), deg2rad(-120.0), deg2rad(-114.0), deg2rad(-36.0), deg2rad(80.0), deg2rad(0.0)]}
@@ -253,6 +300,25 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Refresh tensors
         self._refresh()
+
+        # viewer camera initial setting for result recording
+        if self.viewer:
+            from scipy.spatial.transform import Rotation as R
+            # desired viewer camera pose
+            cam_pos = gymapi.Vec3(22.9, 22.2, 2.01)
+            cam_rot = np.array([0.75, -0.33, -0.23, 0.52])
+
+            r = R.from_quat(cam_rot)
+            forward_vector = np.array([0, 0, 1])
+            cam_direction = r.apply(forward_vector)
+
+            distance = 10.0
+            cam_target = gymapi.Vec3(
+                cam_pos.x + distance * cam_direction[0],
+                cam_pos.y + distance * cam_direction[1],
+                cam_pos.z + distance * cam_direction[2]
+            )
+            self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
     def create_sim(self):
         self.sim_params.up_axis = gymapi.UP_AXIS_Z
@@ -344,7 +410,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "pen": {"size": 0.2,
                     "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
                              "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
-            "pot": {"size": 0.2,
+            "pot": {"size": 0.4,
                     "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
                              "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
             "scissors": {"size": 0.2,
@@ -657,7 +723,14 @@ class BimanualDexCatchUR3Allegro(VecTask):
         id_size_dict = {b.id: b.size for b in self.objects.values()}
         self.obj_id_size_keys = to_torch(list(id_size_dict.keys()), device=self.device)
 
-        id_size_list = [item for value in id_size_dict.values() for item in (value if isinstance(value, list) else [value])]
+        id_size_list = []
+        for value in id_size_dict.values():
+            if isinstance(value, list):
+                id_size_list.append((sum(value)/len(value)) * 0.5)  # ugly mean value
+                # for item in value:
+                #     id_size_list.append(item)
+            else:
+                id_size_list.append(value)
         self.obj_id_size_values = to_torch(id_size_list, device=self.device)
         # self.obj_id_size_values = to_torch(list(id_size_dict.values()), device=self.device)
 
@@ -720,6 +793,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # Setup init state buffer
         self._init_object_state = torch.zeros(self.num_envs, 13, device=self.device)
+        self._init_object_state[:, 7] = 1.0     # unit quaternion
 
         # Setup data
         self.init_data()
@@ -834,6 +908,60 @@ class BimanualDexCatchUR3Allegro(VecTask):
                                             device=self.device).view(self.num_envs, -1)
         self._object_shift_count = torch.ones(self.num_envs, dtype=torch.uint8, device=self.device) * -1
 
+        self.setup_controlled_experiment()
+
+    def save_or_load_data(self, file_path, data, overwrite=False):
+        if os.path.exists(file_path):
+            if overwrite:
+                np.save(file_path, data)
+                print(f"[CE] Data has been overwritten and saved to {file_path}.")
+            else:
+                loaded_data = np.load(file_path)
+                print(f"[CE] Data has been loaded from {file_path}.")
+                return loaded_data
+        else:
+            np.save(file_path, data)
+            print(f"[CE] Data has been saved to {file_path}.")
+        return data
+
+    def setup_controlled_experiment(self):
+        if self.controlled_experiment:
+            self.ce_count = 0
+            self.ce_env = self.num_envs - 1
+
+            # controlled experiment indices
+            self.ce_indices = np.repeat(np.arange(len(self.objects)), self.num_controlled_experiment_per_object)
+            np.random.shuffle(self.ce_indices)
+
+            ce_obj_state_list = []
+            for i in range(len(self.ce_indices)):
+                # controlled experiment uniform random pose & velocity
+                self._reset_uniform_random_object_state(obj='A', env_ids=[self.ce_env])
+                ce_obj_state = self._init_object_state[self.ce_env].clone()
+                ce_obj_state_list.append(ce_obj_state)
+            self.ce_states = torch.stack(ce_obj_state_list)
+
+            # check existing evaluation files
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            path_to_indices = os.path.join(current_dir, '..', 'evaluation', 'controlled_exp_object_indices.npy')
+            path_to_obj_state = os.path.join(current_dir, '..', 'evaluation', 'controlled_exp_object_states.npy')
+
+            self.ce_indices = self.save_or_load_data(file_path=path_to_indices, data=self.ce_indices, overwrite=False)
+            self.ce_states = self.save_or_load_data(file_path=path_to_obj_state, data=self.ce_states.numpy(), overwrite=False)
+            self.ce_states = torch.from_numpy(self.ce_states)
+            print("[CE] Indices for Controlled Experiment: ", self.ce_indices)
+            print("[CE] States for Controlled Experiment: ", self.ce_states)
+
+    # Uncomment to retrieve the current viewer camera transformation
+    # def render(self):
+    #     cam_trans = self.gym.get_viewer_camera_transform(self.viewer, None)
+    #     cam_pos = np.array([cam_trans.p.x, cam_trans.p.y, cam_trans.p.z])
+    #     cam_rot = np.array([cam_trans.r.x, cam_trans.r.y, cam_trans.r.z, cam_trans.r.w])
+    #     print("cam_pos: ", cam_pos)
+    #     print("cam_rot: ", cam_rot)
+    #
+    #     super().render()
+
     def _update_states(self):
 
         # print("left arm contact ", self._l_contact_forces[-1, self.ids_for_contact])
@@ -876,6 +1004,8 @@ class BimanualDexCatchUR3Allegro(VecTask):
             "object_rot_vel": self._target_obj_state[:, :, 10:],
             "object_pos_relative_left_hand": self._target_obj_state[:, :, :3] - self._l_eef_state[:, :3].unsqueeze(1),
             "object_pos_relative_right_hand": self._target_obj_state[:, :, :3] - self._r_eef_state[:, :3].unsqueeze(1),
+            # Reset Buff
+            "reset_buf": self.reset_buf,
         })
 
     def _refresh(self):
@@ -892,10 +1022,26 @@ class BimanualDexCatchUR3Allegro(VecTask):
     def get_all_env_ids(self):
         return torch.ones(self.num_envs, device=self.device, dtype=torch.long)
 
-    def compute_reward(self, actions):  # TODO!
-        self.rew_buf[:], self.reset_buf[:] = compute_franka_reward(
+    def decay_alpha(self, curr_epoch):
+        if self.alpha_decay:
+            self.alpha = self.init_alpha - (self.init_alpha - self.final_alpha) * (min(curr_epoch, self.total_epochs) / self.total_epochs)
+            if curr_epoch % 100 == 0:
+                print("Current alpha: {} / {}".format(self.alpha, curr_epoch))
+
+    def compute_reward(self, actions):
+        rew_catch_buf, self.reset_buf[:] = compute_catch_reward(
             self.reset_buf, self.progress_buf, self.actions, self._l_qd, self._r_qd, self.states, self.reward_settings, self.max_episode_length
         )
+
+        if self.num_multi_agents > 1:
+            rew_throw_buf, reset_buf = compute_throw_reward(
+                self.reset_buf, self.actions, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
+
+            self.reset_buf = self.reset_buf | reset_buf
+            mean_rew = self.alpha * rew_catch_buf + (1 - self.alpha) * rew_throw_buf
+            self.rew_bufs[:] = mean_rew.unsqueeze(-1).repeat(1, self.rew_bufs.shape[1])
+        else:
+            self.rew_buf = 1.0 * rew_catch_buf
 
     def compute_observations(self):
         self._refresh()
@@ -907,7 +1053,16 @@ class BimanualDexCatchUR3Allegro(VecTask):
                    "object_pos_relative_left_hand", "object_pos_relative_right_hand"]
         obs += ["l_eef_pos"] + ["l_eef_quat"] + ["r_eef_pos"] + ["r_eef_quat"]
 
-        self.obs_buf = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
+        if self.num_multi_agents > 1:
+            for agent_id in range(self.num_multi_agents):
+                if agent_id == 1:
+                    obs += ["reset_buf"]
+                self.obs_bufs["obs" + str(agent_id)] = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
+                # self.obs_bufs[:, agent_id] = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
+            return self.obs_bufs
+        else:
+            self.obs_buf = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
+            return self.obs_buf
 
         # # TODO, should be removed later..
         # if torch.any(torch.isnan(self.obs_buf)):
@@ -919,7 +1074,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
         # maxs = {ob: torch.max(self.states[ob]).item() for ob in obs}
 
-        return self.obs_buf
+        # return self.obs_buf
 
     def reset_idx(self, env_ids):
         env_ids_int32 = env_ids.to(dtype=torch.int32)
@@ -933,11 +1088,27 @@ class BimanualDexCatchUR3Allegro(VecTask):
         last_id = self.objects[list(self.objects.keys())[-1]].id + 1
         rand_obj_ids = torch.randint(low=first_id, high=last_id, size=(len(env_ids),), device=self.device)
 
+        idx = None
+        if self.controlled_experiment and self.uniform_test and (self.ce_env in env_ids):     # use last environment for controlled exp
+            print("last env is reset!!!")
+            idx = torch.where(env_ids == self.ce_env)[0].item()
+            ce_idx = self.ce_indices[self.ce_count]
+            rand_obj_ids[idx] = ce_idx + self._obj_ref_id
+            self._init_object_state[env_ids[idx]] = self.ce_states[self.ce_count]
+            print("curr pose: ", self.ce_states[self.ce_count])
+            self.ce_count += 1
+
         self._object_idx_vec[env_ids] = rand_obj_ids.clone()
         indices = torch.searchsorted(self.obj_id_size_keys, rand_obj_ids)
         self._object_size_vec[env_ids] = self.obj_id_size_values[indices].clone()
 
-        self._reset_init_object_state(obj='A', env_ids=env_ids)
+        if self.is_multi_agent:
+            if self.actions is None or self.uniform_test:
+                self._reset_uniform_random_object_state(obj='A', env_ids=env_ids[:idx])
+            else:
+                self._reset_adversarial_random_object_state(obj='A', env_ids=env_ids)
+        else:
+            self._reset_uniform_random_object_state(obj='A', env_ids=env_ids[:idx])
 
         _rand_obj_ids = rand_obj_ids - self._obj_ref_id
         self._target_obj_state[env_ids, _rand_obj_ids] = self._init_object_state[env_ids].clone()
@@ -995,7 +1166,55 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0
 
-    def _reset_init_object_state(self, obj, env_ids):
+    def _reset_uniform_random_object_state(self, obj, env_ids):
+        # If env_ids is None, we reset all the envs
+        if env_ids is None:
+            env_ids = torch.arange(start=0, end=self.num_envs, device=self.device, dtype=torch.long)
+
+        # Initialize buffer to hold sampled values
+        num_resets = len(env_ids)
+        sampled_obj_state = torch.zeros(num_resets, 13, device=self.device)
+
+        # Get correct references depending on which one was selected
+        if obj.lower() == 'a':
+            this_object_state_all = self._init_object_state
+            obj_size = self._object_size_vec
+        else:
+            raise ValueError(f"Invalid cube specified, options are 'A' and 'B'; got: {obj}")
+
+        # Sampling is "centered" around middle of table
+        # centered_cube_xy_state = torch.tensor(self._table_surface_pos[:2], device=self.device, dtype=torch.float32)
+        biased_obj_xy_state = torch.tensor(self._throw_start_pos[:2], device=self.device, dtype=torch.float)
+
+        # Set z value, which is fixed height
+        sampled_obj_state[:, 2] = self._table_surface_pos[2] + obj_size.squeeze(-1)[env_ids]
+
+        # Initialize rotation, which is no rotation (quat w = 1)
+        sampled_obj_state[:, 6] = 1.0
+        sampled_obj_state[:, :2] = biased_obj_xy_state.unsqueeze(0) + torch.cat([
+            0.5 * self.start_position_noise * self.noise_scale * (torch.rand(num_resets, 1, device=self.device) - 0.5),
+            2.0 * self.start_position_noise * self.noise_scale * (torch.rand(num_resets, 1, device=self.device) - 0.5)
+        ], dim=-1)
+
+        sampled_obj_state[:, 2] = torch.tensor([1.5], device=self.device) + \
+                                  2.0 * self.start_position_noise * self.noise_scale * (torch.rand(num_resets, device=self.device) - 0.5)
+
+        # Sample rotation value
+        if self.start_rotation_noise > 0:
+            aa_rot = torch.zeros(num_resets, 3, device=self.device)
+            aa_rot[:, 2] = 2.0 * self.start_rotation_noise * self.noise_scale * (torch.rand(num_resets, device=self.device) - 0.5)
+            sampled_obj_state[:, 3:7] = quat_mul(axisangle2quat(aa_rot), sampled_obj_state[:, 3:7])
+
+        # Lastly, set these sampled values as the new init state
+        this_object_state_all[env_ids, :] = sampled_obj_state
+
+        # linear/angular velocity randomization, m/s, radian/s
+        this_object_state_all[env_ids, 7:10] = 1.0 * self.noise_scale * torch.tensor([5.0, 2.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7]) - 1.0
+        this_object_state_all[env_ids, 9] = torch.abs(this_object_state_all[env_ids, 9]) + 1.0
+        this_object_state_all[env_ids, 10:] = 10.0 * self.noise_scale * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+
+    def _reset_adversarial_random_object_state(self, obj, env_ids):
         # If env_ids is None, we reset all the envs
         if env_ids is None:
             env_ids = torch.arange(start=0, end=self.num_envs, device=self.device, dtype=torch.long)
@@ -1037,11 +1256,25 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # Lastly, set these sampled values as the new init state
         this_object_state_all[env_ids, :] = sampled_obj_state
 
-        # linear/angular velocity randomization, m/s, radian/s
-        this_object_state_all[env_ids, 7:10] = 1.0 * torch.tensor([5.0, 2.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        # # linear/angular velocity randomization, m/s, radian/s
+        this_object_state_all[env_ids, 7:10] = 1.0 * torch.tensor([5.0, 0.0, 4.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
         this_object_state_all[env_ids, 7] = -torch.abs(this_object_state_all[env_ids, 7]) - 1.0
         this_object_state_all[env_ids, 9] = torch.abs(this_object_state_all[env_ids, 9]) + 1.0
-        this_object_state_all[env_ids, 10:] = 10.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+        this_object_state_all[env_ids, 10:] = 1.0 * torch.tensor([1.0, 1.0, 1.0], device=self.device) * (torch.rand(num_resets, 3, device=self.device) - 0.5)
+
+        # Thrower actions
+        # obj_pose = self.actions[env_ids, 44:51]
+        obj_lin_vel = self.actions[env_ids, 44:47]
+        obj_rot_vel = self.actions[env_ids, 47:50]
+
+        # this_object_state_all[env_ids, 0:7] = obj_pose
+        # lin_scale = 27.78  # Max speed: 27.78 m/s, equivalent to 100 km/h (approximate speed of a fastball thrown by a pitcher)
+        # rot_scale = 209.44  # Max 2000 RPM, representing the typical spin rate of a curveball thrown by a pitcher
+        lin_scale = 10.0
+        rot_scale = 100.0
+        this_object_state_all[env_ids, 7:10] += obj_lin_vel * lin_scale * 0.1
+        this_object_state_all[env_ids, 10:13] += obj_rot_vel * rot_scale * 0.1
+
 
     def _compute_osc_torques(self, dpose):
         """
@@ -1080,13 +1313,28 @@ class BimanualDexCatchUR3Allegro(VecTask):
         # key = cv2.waitKey(int(not self.debug_btn))
         # if key == ord('d'): self.debug_btn = not self.debug_btn
 
+        """
+        Action Composition
+            Full Action Dim(57)
+            * Catcher (44)
+                - left arm [0:6]
+                - left fingers [6:22]
+                - right arm [22:28]
+                - right fingers [28:44]
+            * Thrower (13)
+                - object pose [44:51]
+                - object lin vel [51:54]
+                - object rot vel [54:57]
+        """
+
         mask = torch.zeros_like(actions)
         # mask[:, 0] = 1.0
         self.actions = actions.clone().to(self.device)
 
+        # Catcher actions
         # Split arm and finger command
         l_u_arm, l_u_finger = self.actions[:, :6], self.actions[:, 6:22]
-        r_u_arm, r_u_finger = self.actions[:, 22:22+6], self.actions[:, 22+6:]
+        r_u_arm, r_u_finger = self.actions[:, 22:22+6], self.actions[:, 22+6:22+6+16]
 
         # Control arm (scale value first)
         l_u_arm = l_u_arm * self.l_cmd_limit / self.action_scale
@@ -1107,6 +1355,10 @@ class BimanualDexCatchUR3Allegro(VecTask):
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
     def post_physics_step(self):
+        if self.controlled_experiment and not self.sim_start:
+            user_input = input('go??')
+            if user_input.lower() == 'y':
+                self.sim_start = True
         self.progress_buf += 1
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
@@ -1153,7 +1405,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
 
 
 @torch.jit.script
-def compute_franka_reward(
+def compute_catch_reward(
     reset_buf, progress_buf, actions, _l_qd, _r_qd, states, reward_settings, max_episode_length
 ):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor]
@@ -1221,7 +1473,58 @@ def compute_franka_reward(
                - reward_settings["act_penalty_scale"] * action_penalty)
 
     # Compute resets
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size / 2 + 1e-2),
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height < object_size * 0.5 + 1e-2),
+                            torch.ones_like(reset_buf), reset_buf)
+
+    return rewards, reset_buf
+
+
+# @torch.jit.script
+def compute_throw_reward(
+    reset_buf, actions, progress_buf, states, reward_settings, max_episode_length
+):
+    # type: (Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor]
+
+    progress_mask = torch.where(progress_buf==0, 1, -1)
+
+    _act_obj_lin_vel = actions[:, 44:47]
+    _act_obj_rot_vel = actions[:, 47:50]
+
+    act_obj_lin_vel = torch.norm(_act_obj_lin_vel, dim=-1) * progress_mask
+    act_obj_rot_vel = torch.norm(_act_obj_rot_vel, dim=-1) * progress_mask
+
+    object_idx = states["object_idx_vec"].type(torch.long)
+    object_size = states["object_size_vec"]
+
+    ar_idx = torch.arange(len(object_idx), dtype=torch.long)
+
+    # object height for reset_buf
+    temp_pos = states["object_pos"][ar_idx, object_idx, 2]
+    object_height = temp_pos - reward_settings["table_height"]
+
+    # throw reward calc.
+    obj_lin_vel = states["object_pos_vel"][ar_idx, object_idx, :]
+    obj_rot_vel = states["object_rot_vel"][ar_idx, object_idx, :]
+    negative_lin_vel_mask = torch.where(obj_lin_vel[:, 0] > 0, 0.0, 1.0)
+    obj_pos_vel_norm = torch.norm(obj_lin_vel, dim=-1) * negative_lin_vel_mask
+    obj_rot_vel_norm = torch.norm(obj_rot_vel, dim=-1)
+
+    lin_scale = 27.78  # Max speed: 27.78 m/s, equivalent to 100 km/h (approximate speed of a fastball thrown by a pitcher)
+    rot_scale = 209.44  # Max 2000 RPM, representing the typical spin rate of a curveball thrown by a pitcher
+    obj_pos_vel_reward = 1.0 - torch.exp(-5.0 * obj_pos_vel_norm)
+    obj_rot_vel_reward = 1.0 - torch.exp(-5.0 * obj_rot_vel_norm)
+
+    obj_throw_reward = 0.5 * obj_pos_vel_reward + 0.5 * obj_rot_vel_reward
+
+    act_lin_vel_reward = torch.tanh(1.0 * act_obj_lin_vel)
+    act_rot_vel_reward = torch.tanh(1.0 * act_obj_rot_vel)
+    act_reward = 0.5 * act_lin_vel_reward + 0.5 * act_rot_vel_reward
+
+    # reward_settings["r_hand_scale"]
+    rewards = (0.8 * obj_throw_reward + 0.2 * act_reward)
+
+    # Compute resets
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height > 3.0),
                             torch.ones_like(reset_buf), reset_buf)
 
     return rewards, reset_buf

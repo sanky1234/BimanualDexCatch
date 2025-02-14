@@ -1,0 +1,17 @@
+map:
+  SA: 'SA_BimanualDexCatchUR3Allegro_2024-09-09_18-33-09'
+  SA_pbt: 'SA_BimanualDexCatchUR3Allegro_2024-09-09_18-29-46'
+  HA_fix_1.0: 'MA_BimanualDexCatchUR3Allegro_2024-09-09_18-31-35'
+  HA_fix_0.9: 'MA_BimanualDexCatchUR3Allegro_2024-09-10_06-52-48'
+  HA_fix_0.8: 'MA_BimanualDexCatchUR3Allegro_2024-09-11_09-48-27'
+  HA_fix_0.7: 'MA_BimanualDexCatchUR3Allegro_2024-09-10_18-13-24'
+  HA_fix_0.6: 'MA_BimanualDexCatchUR3Allegro_2024-09-11_09-54-33'
+  HA_fix_0.5: 'MA_BimanualDexCatchUR3Allegro_2024-09-10_09-23-44'
+  MA_only_big_fix_0.7: 'MA_BimanualDexCatchUR3Allegro_2024-09-12_23-30-31'
+  HA_decay_0.7: 'MA_BimanualDexCatchUR3Allegro_2024-09-12_09-34-40'
+  HA_decay_0.5: 'MA_BimanualDexCatchUR3Allegro_2024-09-11_19-34-16'
+#  HA_fix_0.9: 'MA_BimanualDexCatchUR3Allegro_2024-09-12_00-29-08'
+#  HA_fix_0.8: 'MA_BimanualDexCatchUR3Allegro_2024-09-13_19-35-34' # this is a noise scale 1.5 ver...
+#  HA_fix_0.7: 'MA_BimanualDexCatchUR3Allegro_2024-09-13_08-12-18'
+#  HA_fix_0.6: ''
+#  HA_fix_0.5: 'MA_BimanualDexCatchUR3Allegro_2024-09-13_08-44-42'

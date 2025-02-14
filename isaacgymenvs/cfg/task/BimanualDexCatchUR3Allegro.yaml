@@ -7,12 +7,13 @@ physics_engine: ${..physics_engine}
 env:
   numEnvs: ${resolve_default:8192,${...num_envs}}
   envSpacing: 1.5
-  episodeLength: 200
+  episodeLength: 150
   enableDebugVis: False
 
   clipObservations: 5.0
   clipActions: 1.0
 
+  noiseScale: 1.0
   startPositionNoise: 0.25
   startRotationNoise: 0.785
   ur3PositionNoise: 0.0
@@ -33,6 +34,18 @@ env:
   actionPenaltyScale: 0.001
 
   controlType: joint_tor  # options are {joint_tor, osc}
+
+  # controlled evaluations
+  controlledExperiment: True
+  numControlledExperimentPerObject: 10
+  uniformTest: False
+
+  # multi_agent configs
+  multiAgent:
+    isMultiAgent: False
+    alpha: 0.7    # default: 0.7
+    finalAlpha: 0.5
+    alpha_decay: False
 
   asset:
     assetRoot: "../../assets"

@@ -12,6 +12,9 @@ from rl_games_twk.common import vecenv
 from rl_games_twk.common import env_configurations
 from rl_games_twk.algos_torch import model_builder
 
+import statistics
+import csv
+
 
 class BasePlayer(object):
 
@@ -270,7 +273,30 @@ class BasePlayer(object):
             self.states = [torch.zeros((s.size()[0], self.batch_size, s.size(
             )[2]), dtype=torch.float32).to(self.device) for s in rnn_states]
 
-    def run(self):
+    def save_rew_to_csv(self, path, total_rew_list):
+        # save total_rew_list as .csv format with the name including total_n_games,
+        if all(isinstance(item, (float, int)) for item in total_rew_list):
+            total_rew_list = [[item] for item in total_rew_list]  # Convert to list of lists
+
+        base_path = os.path.dirname(os.path.dirname(path))
+        eval_folder_path = os.path.join(base_path, "eval")
+
+        if not os.path.exists(eval_folder_path):
+            os.makedirs(eval_folder_path)
+
+        # Define the csv file path (with noise scale value, epinum)
+        ns_val = str(self.env.noise_scale)  # ex) ns1.5 --> noise_scale=1.5
+        games_num = str(self.games_num)
+        file_name = (os.path.splitext(os.path.basename(base_path))[0] +
+                     '_ns' + ns_val + '_epi' + games_num + '.csv')
+        csv_file_path = os.path.join(eval_folder_path, file_name)
+
+        # Write the list data to the csv file
+        with open(csv_file_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerows(total_rew_list)
+
+    def run(self, args=None):
         n_games = self.games_num
         render = self.render_env
         n_game_life = self.n_game_life
@@ -282,6 +308,8 @@ class BasePlayer(object):
         games_played = 0
         has_masks = False
         has_masks_func = getattr(self.env, "has_action_mask", None) is not None
+
+        total_rew_list = []
 
         op_agent = getattr(self.env, "create_agent", None)
         if op_agent:
@@ -343,6 +371,7 @@ class BasePlayer(object):
                             s[:, all_done_indices, :] = s[:,
                                                           all_done_indices, :] * 0.0
 
+                    total_rew_list += cr[done_indices].flatten().tolist()
                     cur_rewards = cr[done_indices].sum().item()
                     cur_steps = steps[done_indices].sum().item()
 
@@ -378,26 +407,29 @@ class BasePlayer(object):
                   games_played * n_game_life, 'winrate:', sum_game_res / games_played * n_game_life)
         else:
             print('av reward:', sum_rewards / games_played * n_game_life,
-                  'av steps:', sum_steps / games_played * n_game_life)
+                  'av steps:', sum_steps / games_played * n_game_life,
+                  'std:', statistics.stdev(total_rew_list))
+            self.save_rew_to_csv(path=args["checkpoint"], total_rew_list=total_rew_list)
 
     def get_batch_size(self, obses, batch_size):
         obs_shape = self.obs_shape
-        if type(self.obs_shape) is dict:
-            if 'obs' in obses:
-                obses = obses['obs']
-            keys_view = self.obs_shape.keys()
-            keys_iterator = iter(keys_view)
-            if 'observation' in obses:
-                first_key = 'observation'
-            else:
-                first_key = next(keys_iterator)
-            obs_shape = self.obs_shape[first_key]
+
+        if isinstance(obs_shape, dict):
+            obses = obses.get('obs', obses)
+            first_key = 'observation' if 'observation' in obses else next(iter(obs_shape))
+            obs_shape = obs_shape[first_key]
             obses = obses[first_key]
 
-        if len(obses.size()) > len(obs_shape):
-            batch_size = obses.size()[0]
+        if isinstance(obses, dict):
+            first_key = next(iter(obses))
+            obs = obses[first_key]
+        else:
+            obs = obses
+
+        if len(obs.size()) > len(obs_shape):
+            batch_size = obs.size(0)
             self.has_batch_dimension = True
 
         self.batch_size = batch_size
-
         return batch_size
+
