@@ -925,6 +925,11 @@ class BimanualDexCatchUR3Allegro(VecTask):
         return data
 
     def setup_controlled_experiment(self):
+        """
+            This setup is a code implementation used to arbitrarily control objects
+            for the per-object experiments in the paper and derive the corresponding results.
+            (See Figure 9 in our paper)
+        """
         if self.controlled_experiment:
             self.ce_count = 0
             self.ce_env = self.num_envs - 1
@@ -947,7 +952,7 @@ class BimanualDexCatchUR3Allegro(VecTask):
             path_to_obj_state = os.path.join(current_dir, '..', 'evaluation', 'controlled_exp_object_states.npy')
 
             self.ce_indices = self.save_or_load_data(file_path=path_to_indices, data=self.ce_indices, overwrite=False)
-            self.ce_states = self.save_or_load_data(file_path=path_to_obj_state, data=self.ce_states.numpy(), overwrite=False)
+            self.ce_states = self.save_or_load_data(file_path=path_to_obj_state, data=self.ce_states.cpu().numpy(), overwrite=False)
             self.ce_states = torch.from_numpy(self.ce_states)
             print("[CE] Indices for Controlled Experiment: ", self.ce_indices)
             print("[CE] States for Controlled Experiment: ", self.ce_states)

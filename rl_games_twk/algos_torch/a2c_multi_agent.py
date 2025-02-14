@@ -695,8 +695,11 @@ class MultiAgentA2CAgent(A2CAgent):
                     self.models[agent_id].running_mean_std.eval()  # don't need to update statstics more than one miniepoch
 
             new_actions_logprob = self.evaluate_actions(self.dataset_list[agent_id], agent_id)
-            action_prod = torch.exp((new_actions_logprob.detach() - old_actions_logprob.detach())).reshape(-1, action_dim).sum(dim=-1, keepdim=True)
-            factor = factor * action_prod.detach()
+
+            # compound policy ratio
+            if self.config['use_cpr']:
+                action_prod = torch.exp((new_actions_logprob.detach() - old_actions_logprob.detach())).reshape(-1, action_dim).sum(dim=-1, keepdim=True)
+                factor = factor * action_prod.detach()
 
         update_time_end = time.time()
         play_time = play_time_end - play_time_start

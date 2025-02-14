@@ -36,12 +36,13 @@ env:
   controlType: joint_tor  # options are {joint_tor, osc}
 
   # controlled evaluations
-  controlledExperiment: True
+  controlledExperiment: False
   numControlledExperimentPerObject: 10
   uniformTest: False
 
   # multi_agent configs
   multiAgent:
+    uniformTest: False
     isMultiAgent: False
     alpha: 0.7    # default: 0.7
     finalAlpha: 0.5
