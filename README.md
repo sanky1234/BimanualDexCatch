@@ -84,6 +84,14 @@ Adjust the required parameters in the **Configs** section and run:
 python test.py
 ```
 
+## Pre-trained Model Download
+You can download all the pretrained [models](https://drive.google.com/file/d/1K6vMcYxARJK50zSikFYYPu72xR8QsveY/view?usp=drive_link) used in the experiments.
+After downloading, extract the model folders to the following path:
+```commandline
+isaacgymenvs/runs
+```
+
+
 ## Bug Report
 If objects unexpectedly reset during testing, modify the following setting:
 
@@ -97,6 +105,14 @@ The **Multi(Heterogeneous)-Agent RL** implementation is located in:
 
 📂 `rl_games_twk/algos_torch/a2c_multi_agent.py`
 
-## Citations
-*Citations will be added soon!* 🚀
+## Citing
 
+Please cite this work as:
+```
+@INPROCEEDINGS{kim2025learning,
+  author    = {Taewoo Kim and Youngwoo Yoon and Jaehong Kim},
+  title     = {Learning Dexterous Bimanual Catch Skills through Adversarial-Cooperative Heterogeneous-Agent Reinforcement Learning},
+  booktitle={International Conference on Robotics and Automation (ICRA)},
+  year      = {2025}
+}
+```
