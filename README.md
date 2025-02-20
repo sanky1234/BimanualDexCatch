@@ -1,6 +1,6 @@
 # [ICRA 2025] Learning Dexterous Bimanual Catch Skills through Adversarial-Cooperative Heterogeneous-Agent Reinforcement Learning
 
-[Paper]() | [Videos](https://youtu.be/LbzgZB7IQuY?si=VSCWraJeeeyx7fkY)
+[Paper](https://arxiv.org/pdf/2502.11437) | [Videos](https://youtu.be/LbzgZB7IQuY?si=VSCWraJeeeyx7fkY)
 
 <img src="images/github_gifs00000332.gif" width="100%">
 <img src="images/github_gifs00000740.gif" width="100%">
