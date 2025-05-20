@@ -55,11 +55,11 @@ capture_video_len: 100
 force_render: True
 
 # disables rendering
-headless: True
+headless: False
 
 # set default task and default training config based on task
 defaults:
-  - task: BimanualDexCatchUR3Allegro
+  - task: BimanualDexCatchSpot
   - train: ${task}PPO
   - pbt: no_pbt  # no_pbt, pbt_default
   - override hydra/job_logging: disabled
