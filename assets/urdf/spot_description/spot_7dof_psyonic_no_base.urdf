@@ -292,7 +292,7 @@
     <collision>
       <origin rpy="0 0 3.14" xyz="0.227 0.0085 -0.024"/>
       <geometry>
-        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link5.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link4_papras_simple.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -343,7 +343,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link6.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link5.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -393,7 +393,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="-0.034 -0.098 -0.028"/>
       <geometry>
-        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link7.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link6_papras_simple.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -1198,7 +1198,7 @@
     <collision>
       <origin rpy="0 0 3.14" xyz="0.227 0.0085 -0.024"/>
       <geometry>
-        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link5.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link4_papras_simple.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -1249,7 +1249,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link6.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link5.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -1299,7 +1299,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="-0.034 -0.098 -0.028"/>
       <geometry>
-        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link7.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/link6_papras_simple.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -1403,7 +1403,7 @@
     <collision name="robot2/wrist_mesh">
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/base.stl"/>
+        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/psyonic/wristmesh.STL"/>
       </geometry>
     </collision>
     <inertial>

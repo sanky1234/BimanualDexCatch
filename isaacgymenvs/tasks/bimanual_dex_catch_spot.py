@@ -125,7 +125,7 @@ class BimanualDexCatchSpot(VecTask):
         self.max_episode_length = self.cfg["env"]["episodeLength"]
 
         self.action_scale = self.cfg["env"]["actionScale"]
-        self.noise_scale = self.cfg["env"]["noiseScale"]
+        self.noise_scale = 0.0
         self.aggregate_mode = self.cfg["env"]["aggregateMode"]
 
         # Create dicts to pass to reward function
@@ -156,6 +156,10 @@ class BimanualDexCatchSpot(VecTask):
         # actions if osc: delta EEF if OSC (6) + finger torques (16) = 22
         # actions if joint: joint torques (6) + finger torques (16) = 22
         self.cfg["env"]["numActions"] = 22 if self.control_type == "osc" else 44 + self.cfg["env"]["numThrowerActions"]
+
+        self.start_position_noise = 0.0
+        self.start_rotation_noise = 0.0
+
 
         # Values to be filled in at runtime
         self.states = {}                        # will be dict filled with relevant states to use for reward calculation
@@ -225,75 +229,42 @@ class BimanualDexCatchSpot(VecTask):
 
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
-        if self.is_multi_agent:
-            # reward weight
-            self.alpha_decay = self.cfg["env"]["multiAgent"].get("alpha_decay", False)
-            self.alpha = self.cfg["env"]["multiAgent"].get("alpha", 0.9) \
-                if not self.uniform_test else 1.0
-            self.init_alpha = self.alpha
-            self.final_alpha = self.cfg["env"]["multiAgent"].get("finalAlpha", 0.5)
-            self.total_epochs = 10000
-            print("Alpha: {}, init_alpha: {}, final_alpha: {}, total_epoch: {}"
-                  .format(self.alpha, self.init_alpha, self.final_alpha, self.total_epochs))
+        self.num_a_actions = 0
 
-            self.num_multi_agents = 2
+        self.default_spot_pose = {
+            "forward" : [deg2rad(-90.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), 
+                      deg2rad(0.0), deg2rad(90.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)],
+            "init" : [deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), 
+                      deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)]
 
-            self.obs_space = spaces.Dict({"catch": spaces.Box(np.ones(self.num_obs) * -np.Inf, np.ones(self.num_obs) * np.Inf),
-                                          "throw": spaces.Box(np.ones(self.num_obs+1) * -np.Inf, np.ones(self.num_obs+1) * np.Inf)})
 
-            self.rew_bufs = torch.zeros(self.num_envs, self.num_multi_agents, device=self.device, dtype=torch.float)
-            self.obs_bufs = {}
-            self.obs_bufs.update({
-                "obs0": torch.zeros(self.num_envs, self.num_obs, device=self.device, dtype=torch.float),
-                "obs1": torch.zeros(self.num_envs, self.num_obs + 1, device=self.device, dtype=torch.float)
-            })
+        }
 
-            # remove buffers for single-agent
-            del self.obs_buf
-            del self.rew_buf
+        self.default_pysonic_pose = {
+            "init" : [deg2rad(00.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), 
+                      deg2rad(0.0), deg2rad(00.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)]
+        }
 
-        self.num_a_actions = self.cfg["env"]["numThrowerActions"]
 
-        # UR3 defaults
-        self.default_left_ur3_pose = {"forward": [deg2rad(-90.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)],
-                                      "downward": [deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)]}
-        self.default_right_ur3_pose = {"forward": [deg2rad(-30.0), deg2rad(-90.0), deg2rad(-110.0), deg2rad(-160.0), deg2rad(-90.0), deg2rad(-90.0)],
-                                       "downward": [deg2rad(0.0), deg2rad(-120.0), deg2rad(-114.0), deg2rad(-36.0), deg2rad(80.0), deg2rad(0.0)]}
-
-        self.default_allegro_pose = {
-            "spread": [deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0),      # index
-                       deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0),      # middle
-                       deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0),      # ring
-                       deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)],     # thumb
-            }
-
-        self.left_ur3_default_dof_pos = to_torch(
-            self.default_left_ur3_pose["forward"] + self.default_allegro_pose["spread"], device=self.device
-        )
-
-        self.right_ur3_default_dof_pos = to_torch(
-            self.default_right_ur3_pose["forward"] + self.default_allegro_pose["spread"], device=self.device
-        )
-
-        # OSC Gains
-        nj = 6   # actual # of joints
-        self.kp = to_torch([150.] * 6, device=self.device)
+        # # OSC Gains
+        nj = 7   # actual # of joints
+        self.kp = to_torch([150.] * nj, device=self.device)
         self.kd = 2 * torch.sqrt(self.kp)
         self.kp_null = to_torch([10.] * nj, device=self.device)
         self.kd_null = 2 * torch.sqrt(self.kp_null)
-        #self.cmd_limit = None                   # filled in later
+        self.cmd_limit = None                   # filled in later
 
-        # Set control limits,
-        # TODO!!!
+        # # Set control limits,
+        # # TODO!!!
         self.l_cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
-        self.control_type == "osc" else self.left_allegro_ur3_effort_limits[:6].unsqueeze(0)
+        self.control_type == "osc" else self.spot_effort_limits[:6]
         self.r_cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
-            self.control_type == "osc" else self.right_allegro_ur3_effort_limits[:6].unsqueeze(0)
+            self.control_type == "osc" else self.spot_effort_limits[:6]
 
         # Reset all environments
         self.reset_idx(torch.arange(self.num_envs, device=self.device, dtype=torch.long))
 
-        # Refresh tensors
+        # # Refresh tensors
         self._refresh()
 
         # viewer camera initial setting for result recording
@@ -323,66 +294,43 @@ class BimanualDexCatchSpot(VecTask):
         self.sim = super().create_sim(self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
         self._create_ground_plane()
         self._create_envs(self.num_envs, self.cfg["env"]['envSpacing'], int(np.sqrt(self.num_envs)))
-
+       
     def _create_ground_plane(self):
         plane_params = gymapi.PlaneParams()
         plane_params.normal = gymapi.Vec3(0.0, 0.0, 1.0)
         self.gym.add_ground(self.sim, plane_params)
+        # Since nothing touching the ground it is not needed to set the ground plane params
+        # plane_params.static_friction = self.plane_static_friction
+        # plane_params.dynamic_friction = self.plane_dynamic_friction
+        # self.gym.add_ground(self.sim, plane_params)
 
     def _create_object_assets(self):
+
+        # import the football 
+
+
         self.asset_files_dict = {
+
+
             "football" : "urdf/football.urdf",
         }
 
-        """
-        Allocate object dictionaries.
-        Comment out the corresponding line if you want to exclude an object.
-        """
+        self.asset_football_file = "urdf/football.urdf"
 
-        objects_to_create = [
-           "football"
-        ]
+        setattr(self.objects, "football", AttrDict())
 
-        for obj in objects_to_create:
-            setattr(self.objects, obj, AttrDict())
+      
 
-        asset_creation_params = {
-            "football": {"size": 0.2,
-                        "opts": {"override_com": True, "override_inertia": True, "use_mesh_materials": True,
-                                 "mesh_normal_mode": gymapi.MeshNormalMode.COMPUTE_PER_VERTEX}},
-        }
+        football_asset_options = gymapi.AssetOptions()
+      
+        football_asset_options.override_com = False
+        football_asset_options.override_inertia = False
+        football_asset_options.use_mesh_materials = True
+        football_asset_options.mesh_normal_mode = gymapi.MeshNormalMode.COMPUTE_PER_VERTEX
+        football_asset_options.thickness = 0.01
 
-        for obj, params in asset_creation_params.items():
-            if hasattr(self.objects, obj):
-                self.objects[obj].size = params["size"]
-                opts = gymapi.AssetOptions()
-                for key, value in params["opts"].items():
-                    setattr(opts, key, value)
-                if obj in self.asset_files_dict:
-                    self.objects[obj].opts = opts
-                    self.objects[obj].asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_files_dict[obj], opts)
-                else:
-                    shape = params.get("shape", None)
-                    if shape == "sphere":
-                        self.objects[obj].asset = self.gym.create_sphere(self.sim, self.objects[obj].size * 0.5, opts)
-                    elif shape == "box":
-                        size = self.objects[obj].size
-                        if isinstance(size, list) and len(size) == 3:
-                            width, length, height = size
-                            self.objects[obj].asset = self.gym.create_box(self.sim, width, length, height, opts)
-                        else:
-                            self.objects[obj].asset = self.gym.create_box(self.sim, *([size] * 3), opts)
-                    elif shape == "capsule":
-                        if isinstance(self.objects[obj].size, list) and len(self.objects[obj].size) == 2:
-                            radius, length = self.objects[obj].size
-                            self.objects[obj].asset = self.gym.create_capsule(self.sim, radius, length, opts)
-                        else:
-                            raise ValueError(f"Size for capsule must be a list of two elements: [radius, length].")
-                    else:
-                        raise ValueError(f"Unknown shape: {shape}")
-
-                if "color" in params:
-                    self.objects[obj].color = gymapi.Vec3(*params["color"])
+        self.objects["football"].asset = self.gym.load_asset(self.sim, self.asset_root, self.asset_football_file, football_asset_options)
+        self.objects["football"].size = 0.3
 
         self.num_objs = len(get_assets(self.objects))
 
@@ -391,8 +339,8 @@ class BimanualDexCatchSpot(VecTask):
         upper = gymapi.Vec3(spacing, spacing, spacing)
 
         # TODO: Get rid of the hardcoded values
-        self.asset_root = os.path.joint(os.path.dirname(os.path.abspath(__file__)), "../../assets")
-        spot_asset_file = "urdf/spot_description/urdf/spot.urdf"
+        self.asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../assets")
+        spot_asset_file = "urdf/spot_description/spot_7dof_psyonic_no_base.urdf"
 
 
         # load orthrus asset
@@ -400,18 +348,20 @@ class BimanualDexCatchSpot(VecTask):
         asset_options.flip_visual_attachments = False
         asset_options.fix_base_link = True
         asset_options.collapse_fixed_joints = False
-        asset_options.disable_gravity = True
+        asset_options.disable_gravity = False
         asset_options.thickness = 0.001
         asset_options.default_dof_drive_mode = gymapi.DOF_MODE_POS
         asset_options.use_mesh_materials = True
         spot = self.gym.load_asset(self.sim, self.asset_root, spot_asset_file, asset_options)
-       
-        self._create_assets()
+
+        self._create_object_assets()
 
         print("Orthrus body cnt: ", self.gym.get_asset_rigid_body_count(spot))
 
         self.num_spot_bodies = self.gym.get_asset_rigid_body_count(spot) 
         self.num_spot_dofs = self.gym.get_asset_dof_count(spot)
+
+        self.spot_assets = [spot]
 
 
         print("Total num spot bodies: ", self.num_spot_bodies)
@@ -500,13 +450,18 @@ class BimanualDexCatchSpot(VecTask):
         object_lounge.p = gymapi.Vec3(-1.0, 0.0, 0.0)
         object_lounge.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
+
+
+
         # compute aggregate size
-        num_ur3_bodies = sum([self.gym.get_asset_rigid_body_count(asset) for asset in self.allegro_ur3_assets + get_assets(self.objects)])
-        num_ur3_shapes = sum([self.gym.get_asset_rigid_shape_count(asset) for asset in self.allegro_ur3_assets + get_assets(self.objects)])
-        self.num_bodies = max_agg_bodies = num_ur3_bodies + 3   # 1 for table, 2 for table stands(x2), objects(cube, ball, etc)
-        self.num_shapes = max_agg_shapes = num_ur3_shapes + 3   # 1 for table, 2 for table stands(x2), objects(cube, ball, etc)
+        num_spot_bodies = sum([self.gym.get_asset_rigid_body_count(asset) for asset in self.spot_assets + get_assets(self.objects)])
+        num_spot_shapes = sum([self.gym.get_asset_rigid_shape_count(asset) for asset in self.spot_assets + get_assets(self.objects)])
+        self.num_bodies = max_agg_bodies = num_spot_bodies    # 1 for table, 2 for table stands(x2), objects(cube, ball, etc)
+        self.num_shapes = max_agg_shapes = num_spot_shapes    # 1 for table, 2 for table stands(x2), objects(cube, ball, etc)
 
         self.envs = []
+
+
 
         # Create environments
         for i in range(self.num_envs):
@@ -518,38 +473,19 @@ class BimanualDexCatchSpot(VecTask):
             if self.aggregate_mode >= 3:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
 
-            # Create allegro_ur3
-            # Potentially randomize start pose
-            if self.ur3_position_noise > 0:
-                rand_xy = self.ur3_position_noise * (-1. + np.random.rand(2) * 2.0)
-                left_ur3_start_pose.p = gymapi.Vec3(-0.45 + rand_xy[0], 0.0 + rand_xy[1],
-                                                    1.0 + table_thickness / 2 + table_stand_height)
-            if self.ur3_rotation_noise > 0:
-                rand_rot = torch.zeros(1, 3)
-                rand_rot[:, -1] = self.ur3_rotation_noise * (-1. + np.random.rand() * 2.0)
-                new_quat = axisangle2quat(rand_rot).squeeze().numpy().tolist()
-                left_ur3_start_pose.r = gymapi.Quat(*new_quat)
+           
             """
             * bitwise collision filter can be defined as following:
                 left_ur3: 4 -->   100 (binary number)
                 right_ur3: 8 --> 1000 (binary number)
                 Both the left and right UR3 arms are not intersecting, so they can collide with each other
             """
-            self._left_ur3_id = self.gym.create_actor(env_ptr, left_allegro_ur3_asset, left_ur3_start_pose, "left_ur3", i, 4, 0) # TODO, default: i,0,0
-            self.gym.set_actor_dof_properties(env_ptr, self._left_ur3_id, self.bi_ur3_dof_props[0])
-            # print("left arm index: ", self.gym.get_actor_index(env_ptr, left_ur3_actor, gymapi.DOMAIN_SIM))
-
-            self._right_ur3_id = self.gym.create_actor(env_ptr, right_allegro_ur3_asset, right_ur3_start_pose, "right_ur3", i, 8, 0)
-            self.gym.set_actor_dof_properties(env_ptr, self._right_ur3_id, self.bi_ur3_dof_props[1])
-            # print("right arm index: ", self.gym.get_actor_index(env_ptr, right_ur3_actor, gymapi.DOMAIN_SIM))
+            # Spot 
+            self._spot_id = self.gym.create_actor(env_ptr, spot, spot_start_pose, "spot", i, 1, 0)
+            print("Spot index: ", self.gym.get_actor_index(env_ptr, self._spot_id, gymapi.DOMAIN_SIM))
 
             if self.aggregate_mode == 2:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
-
-            # Create table
-            table_actor = self.gym.create_actor(env_ptr, table_asset, table_start_pose, "table", i, 1, 0)
-            l_table_stand_actor = self.gym.create_actor(env_ptr, table_stand_asset, table_stand_left_start_pose, "left_table_stand", i, 1, 0)
-            r_table_stand_actor = self.gym.create_actor(env_ptr, table_stand_asset, table_stand_right_start_pose, "right_table_stand", i, 1, 0)
 
             if self.aggregate_mode == 1:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
@@ -587,7 +523,7 @@ class BimanualDexCatchSpot(VecTask):
         self.obj_id_size_values = to_torch(id_size_list, device=self.device)
         # self.obj_id_size_values = to_torch(list(id_size_dict.values()), device=self.device)
 
-        self.allegro_ur3_body_dict = self.gym.get_actor_rigid_body_dict(env_ptr, self._left_ur3_id)
+        self.spot_body_dict = self.gym.get_actor_rigid_body_dict(env_ptr, self._spot_id)
         """
         Rigid body flags:
             gymapi.RIGID_BODY_NONE= 0
@@ -596,54 +532,78 @@ class BimanualDexCatchSpot(VecTask):
         """
 
         # if you want to show the items of the dict, comment out the following codes
-        # sorted_dict = dict(sorted(self.allegro_ur3_body_dict.items(), key=lambda item: item[1]))
+        # sorted_dict = dict(sorted(self.spot_body_dict.items(), key=lambda item: item[1]))
         # for key, value in sorted_dict.items():
         #     print(f"{key}: {value}")
-        """
-        * allegro_ur3_body_dict items
-        --------------------------------
-            world: 0    # world
-        --------------------------------
-            base_link: 1    # UR3 starts
-            base: 2
-            base_link_inertia: 3
-            shoulder_link: 4
-            upper_arm_link: 5
-            forearm_link: 6
-            wrist_1_link: 7
-            wrist_2_link: 8
-            wrist_3_link: 9
-            flange: 10
-            tool0: 11
-        --------------------------------
-            adaptor: 12     # adaptor
-        --------------------------------
-            palm_link: 13   # allegro hand starts
-            link_0: 14
-            link_1: 15
-            link_2: 16
-            link_3: 17
-            link_3_tip: 18
-            link_12: 19
-            link_13: 20
-            link_14: 21
-            link_15: 22
-            link_15_tip: 23
-            link_4: 24
-            link_5: 25
-            link_6: 26
-            link_7: 27
-            link_7_tip: 28
-            link_8: 29
-            link_9: 30
-            link_10: 31
-            link_11: 32
-            link_11_tip: 33
-            allegro_grip_site: 34
-            ft_frame: 35
-        --------------------------------
-        """
 
+        """
+            env: 0                      
+            robot1/link1: 1             
+            robot1/link2: 2             
+            robot1/link3: 3             
+            robot1/link4: 4             
+            robot1/link5: 5             
+            robot1/link6: 6             
+            robot1/link7: 7             
+            robot1/end_link: 8          
+            robot1/base: 9              
+            robot1/end_effector_link: 10
+            robot1/thumb_base: 11   
+            robot1/index_L1: 12     
+            robot1/index_L2: 13     
+            robot1/index_anchor: 14 
+            robot1/middle_L1: 15    
+            robot1/middle_L2: 16    
+            robot1/middle_anchor: 17
+            robot1/pinky_L1: 18         
+            robot1/pinky_L2: 19         
+            robot1/pinky_anchor: 20     
+            robot1/ring_L1: 21          
+            robot1/ring_L2: 22          
+            robot1/ring_anchor: 23      
+            robot1/thumb_L1: 24         
+            robot1/thumb_L2: 25         
+            robot1/thumb_anchor: 26     
+            robot1/link6_middle: 27     
+            robot1/link5_middle: 28     
+            robot1/link4_middle: 29     
+            robot1/link3_middle: 30     
+            robot1/link2_middle: 31     
+            robot2/link1: 32            
+            robot2/link2: 33            
+            robot2/link3: 34            
+            robot2/link4: 35            
+            robot2/link5: 36            
+            robot2/link6: 37            
+            robot2/link7: 38            
+            robot2/end_link: 39         
+            robot2/base: 40             
+            robot2/end_effector_link: 41
+            robot2/thumb_base: 42   
+            robot2/index_L1: 43     
+            robot2/index_L2: 44     
+            robot2/index_anchor: 45 
+            robot2/middle_L1: 46    
+            robot2/middle_L2: 47    
+            robot2/middle_anchor: 48
+            robot2/pinky_L1: 49    
+            robot2/pinky_L2: 50    
+            robot2/pinky_anchor: 51
+            robot2/ring_L1: 52
+            robot2/ring_L2: 53
+            robot2/ring_anchor: 54
+            robot2/thumb_L1: 55
+            robot2/thumb_L2: 56
+            robot2/thumb_anchor: 57
+            robot2/link6_middle: 58
+            robot2/link5_middle: 59
+            robot2/link4_middle: 60
+            robot2/link3_middle: 61
+            robot2/link2_middle: 62
+        """
+        
+        # import pdb 
+        # pdb.set_trace()
         # Setup init state buffer
         self._init_object_state = torch.zeros(self.num_envs, 13, device=self.device)
         self._init_object_state[:, 7] = 1.0     # unit quaternion
@@ -654,24 +614,25 @@ class BimanualDexCatchSpot(VecTask):
     def init_data(self):
         # Setup sim handles
         env_ptr = self.envs[0]
-        left_ur3_handle = 0
-        right_ur3_handle = 1
+        spot_handle = 0
         self.handles = {
             # UR3
-            "hand_left": self.gym.find_actor_rigid_body_handle(env_ptr, left_ur3_handle, "tool0"),
-            "grip_site_left": self.gym.find_actor_rigid_body_handle(env_ptr, left_ur3_handle, "allegro_grip_site"),
-            "hand_right": self.gym.find_actor_rigid_body_handle(env_ptr, right_ur3_handle, "tool0"),
-            "grip_site_right": self.gym.find_actor_rigid_body_handle(env_ptr, right_ur3_handle, "allegro_grip_site"),
-            "base_left": self.gym.find_actor_rigid_body_handle(env_ptr, left_ur3_handle, "base_link"),
-            "base_right": self.gym.find_actor_rigid_body_handle(env_ptr, right_ur3_handle, "base_link"),
+            "hand_left": self.gym.find_actor_rigid_body_handle(env_ptr, spot_handle, "robot1/end_effector_link"),
+            "hand_right": self.gym.find_actor_rigid_body_handle(env_ptr, spot_handle, "robot2/end_effector_link"),
+            "base_left": self.gym.find_actor_rigid_body_handle(env_ptr, spot_handle, "robot1/link1"),
+            "base_right": self.gym.find_actor_rigid_body_handle(env_ptr, spot_handle, "robot2/link2"),
         }
 
-        bodies_to_detect_contacts = ["base_link_inertia", "shoulder_link", "upper_arm_link", "forearm_link",
-                                     "wrist_1_link", "wrist_2_link", "wrist_3_link"]
+        bodies_to_detect_contacts = ["env", "robot1/link1", "robot1/link2", "robot1/link3",
+                                     "robot1/link4", "robot1/link5", "robot1/link6", "robot1/link7",
+                                     "robot1/thumb_base", "robot2/link1", "robot2/link2", "robot2/link3",
+                                     "robot2/link4", "robot2/link5", "robot2/link6", "robot2/link7",
+                                     "robot2/thumb_base"
+                                     ]
         # TODO, hand-side contacts should be encouraged..
-        fingers_to_detect_contacts = ["link_3_tip", "link_7_tip", "link_11_tip", "link_15_tip"]     # "palm_link"
-        self.ids_for_arm_contact = get_indices_from_dict(self.allegro_ur3_body_dict, bodies_to_detect_contacts)
-        self.ids_for_hand_contact = get_indices_from_dict(self.allegro_ur3_body_dict, fingers_to_detect_contacts)
+        # fingers_to_detect_contacts = []     # "palm_link"
+        self.ids_for_arm_contact = get_indices_from_dict(self.spot_body_dict, bodies_to_detect_contacts)
+        # self.ids_for_hand_contact = get_indices_from_dict(self.allegro_ur3_body_dict, fingers_to_detect_contacts)
 
         # Get total DOFs
         self.num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
@@ -687,42 +648,42 @@ class BimanualDexCatchSpot(VecTask):
         self._dof_state = gymtorch.wrap_tensor(_dof_state_tensor).view(self.num_envs, -1, 2)
         self._rigid_body_state = gymtorch.wrap_tensor(_rigid_body_state_tensor).view(self.num_envs, -1, 13)
         self._contact_forces = gymtorch.wrap_tensor(_contact_force_tensor).view(self.num_envs, self.num_bodies, 3)
-        num_bodies_per_robot = self.num_allegro_ur3_bodies // len(self.allegro_ur3_assets)
+        num_bodies_per_robot = self.num_spot_bodies // len(self.spot_assets)
         self._l_contact_forces = self._contact_forces[:, :num_bodies_per_robot, :]
         self._r_contact_forces = self._contact_forces[:, num_bodies_per_robot:, :]
         self._q = self._dof_state[:, :self.cfg["env"]["numActions"], 0]
         self._qd = self._dof_state[:, :self.cfg["env"]["numActions"], 1]
         self._obj_q = self._dof_state[:, self.cfg["env"]["numActions"]:, 0]     # object dofs
         self._obj_qd = self._dof_state[:, self.cfg["env"]["numActions"]:, 1]
-        dof_per_arm = self.num_allegro_ur3_dofs // len(self.allegro_ur3_assets)
+        dof_per_arm = self.num_spot_dofs  // len(self.spot_assets)
         self._l_q = self._q[:, :dof_per_arm]
         self._l_qd = self._qd[:, :dof_per_arm]
         self._r_q = self._q[:, dof_per_arm:]
         self._r_qd = self._qd[:, dof_per_arm:]
-        self._l_eef_state = self._rigid_body_state[:, self.handles["grip_site_left"], :]
-        self._r_eef_state = self._rigid_body_state[:, self.handles["grip_site_right"], :]
+        self._l_eef_state = self._rigid_body_state[:, self.handles["hand_left"], :]
+        self._r_eef_state = self._rigid_body_state[:, self.handles["hand_right"], :]
         self._l_base_state = self._rigid_body_state[:, self.handles["base_left"], :]
         self._r_base_state = self._rigid_body_state[:, self.handles["base_right"], :]
-        _l_jacobian = self.gym.acquire_jacobian_tensor(self.sim, "left_ur3")
-        l_jacobian = gymtorch.wrap_tensor(_l_jacobian)
-        _r_jacobian = self.gym.acquire_jacobian_tensor(self.sim, "right_ur3")
-        r_jacobian = gymtorch.wrap_tensor(_r_jacobian)
+        _n_jacobian = self.gym.acquire_jacobian_tensor(self.sim, "spot")
+        _jacobian = gymtorch.wrap_tensor(_n_jacobian)
+        # _r_jacobian = self.gym.acquire_jacobian_tensor(self.sim, "right_ur3")
+        # r_jacobian = gymtorch.wrap_tensor(_r_jacobian)
 
         # left arm
-        temp = self.gym.get_actor_joint_dict(env_ptr, left_ur3_handle)
-        hand_joint_index = self.gym.get_actor_joint_dict(env_ptr, left_ur3_handle)['flange-tool0']
-        self._l_j_eef = l_jacobian[:, hand_joint_index, :, :6]
-        _l_massmatrix = self.gym.acquire_mass_matrix_tensor(self.sim, "left_ur3")
-        _l_mm = gymtorch.wrap_tensor(_l_massmatrix)
-        self._l_mm = _l_mm[:, :6, :6]
+        # temp = self.gym.get_actor_joint_dict(env_ptr, spot_handle)
+        # hand_joint_index = self.gym.get_actor_joint_dict(env_ptr, spot_handle)['flange-tool0']
+        # self._l_j_eef = l_jacobian[:, hand_joint_index, :, :6]
+        # _l_massmatrix = self.gym.acquire_mass_matrix_tensor(self.sim, "left_ur3")
+        # _l_mm = gymtorch.wrap_tensor(_l_massmatrix)
+        # self._l_mm = _l_mm[:, :6, :6]
 
-        # right arm
-        temp = self.gym.get_actor_joint_dict(env_ptr, right_ur3_handle)
-        hand_joint_index = self.gym.get_actor_joint_dict(env_ptr, right_ur3_handle)['flange-tool0']
-        self._r_j_eef = r_jacobian[:, hand_joint_index, :, :6]
-        _r_massmatrix = self.gym.acquire_mass_matrix_tensor(self.sim, "right_ur3")
-        _r_mm = gymtorch.wrap_tensor(_r_massmatrix)
-        self._r_mm = _r_mm[:, :6, :6]
+        # # right arm
+        # temp = self.gym.get_actor_joint_dict(env_ptr, right_ur3_handle)
+        # hand_joint_index = self.gym.get_actor_joint_dict(env_ptr, right_ur3_handle)['flange-tool0']
+        # self._r_j_eef = r_jacobian[:, hand_joint_index, :, :6]
+        # _r_massmatrix = self.gym.acquire_mass_matrix_tensor(self.sim, "right_ur3")
+        # _r_mm = gymtorch.wrap_tensor(_r_massmatrix)
+        # self._r_mm = _r_mm[:, :6, :6]
 
         first_id = self.objects[list(self.objects.keys())[0]].id
         last_id = self.objects[list(self.objects.keys())[-1]].id + 1
@@ -749,14 +710,14 @@ class BimanualDexCatchSpot(VecTask):
         self._obj_effort_control = torch.zeros_like(self._obj_pos_control)
 
         # Initialize control
-        self._l_arm_control = self._l_effort_control[:, :6]
+        self._l_arm_control = self._l_effort_control[:, :7]
         self._l_finger_control = self._l_effort_control[:, 6:]
-        self._r_arm_control = self._r_effort_control[:, :6]
+        self._r_arm_control = self._r_effort_control[:, :7]
         self._r_finger_control = self._r_effort_control[:, 6:]
 
         # Initialize indices
         # left_ur3 + right_ur3 + table + table_stand x 2 + num_objects
-        num_actors = len(self.allegro_ur3_assets) + 3 + self.num_objs
+        num_actors = len(self.spot_assets) + self.num_objs
         self._global_indices = torch.arange(self.num_envs * num_actors, dtype=torch.int32,
                                             device=self.device).view(self.num_envs, -1)
         self._object_shift_count = torch.ones(self.num_envs, dtype=torch.uint8, device=self.device) * -1
@@ -960,13 +921,8 @@ class BimanualDexCatchSpot(VecTask):
         indices = torch.searchsorted(self.obj_id_size_keys, rand_obj_ids)
         self._object_size_vec[env_ids] = self.obj_id_size_values[indices].clone()
 
-        if self.is_multi_agent:
-            if self.actions is None or self.uniform_test:
-                self._reset_uniform_random_object_state(obj='A', env_ids=env_ids[:idx])
-            else:
-                self._reset_adversarial_random_object_state(obj='A', env_ids=env_ids)
-        else:
-            self._reset_uniform_random_object_state(obj='A', env_ids=env_ids[:idx])
+       
+        self._reset_uniform_random_object_state(obj='A', env_ids=env_ids[:idx])
 
         _rand_obj_ids = rand_obj_ids - self._obj_ref_id
         self._target_obj_state[env_ids, _rand_obj_ids] = self._init_object_state[env_ids].clone()
@@ -1134,37 +1090,6 @@ class BimanualDexCatchSpot(VecTask):
         this_object_state_all[env_ids, 10:13] += obj_rot_vel * rot_scale * 0.1
 
 
-    def _compute_osc_torques(self, dpose):
-        """
-            * NOT used in this project..
-        """
-        d = 6   # actual joint dof
-        # Solve for Operational Space Control # Paper: khatib.stanford.edu/publications/pdfs/Khatib_1987_RA.pdf
-        # Helpful resource: studywolf.wordpress.com/2013/09/17/robot-control-4-operation-space-control/
-        q, qd = self._q[:, :d], self._qd[:, :d]
-        mm_inv = torch.inverse(self._mm)
-        m_eef_inv = self._j_eef @ mm_inv @ torch.transpose(self._j_eef, 1, 2)
-        m_eef = torch.inverse(m_eef_inv)
-
-        # Transform our cartesian action `dpose` into joint torques `u`
-        u = torch.transpose(self._j_eef, 1, 2) @ m_eef @ (
-                self.kp * dpose - self.kd * self.states["eef_vel"]).unsqueeze(-1)
-
-        # Nullspace control torques `u_null` prevents large changes in joint configuration
-        # They are added into the nullspace of OSC so that the end effector orientation remains constant
-        # roboticsproceedings.org/rss07/p31.pdf
-        j_eef_inv = m_eef @ self._j_eef @ mm_inv
-        u_null = self.kd_null * -qd + self.kp_null * (
-                (self.ur3_default_dof_pos[:d] - q + np.pi) % (2 * np.pi) - np.pi)
-        u_null[:, d:] *= 0
-        u_null = self._mm @ u_null.unsqueeze(-1)
-        u += (torch.eye(d, device=self.device).unsqueeze(0) - torch.transpose(self._j_eef, 1, 2) @ j_eef_inv) @ u_null
-
-        # Clip the values to be within valid effort range
-        u = tensor_clamp(u.squeeze(-1),
-                         -self._ur3_effort_limits[:d].unsqueeze(0), self._ur3_effort_limits[:d].unsqueeze(0))
-
-        return u
 
     def pre_physics_step(self, actions):
         # cv2.imshow("step by press", np.zeros((100, 100, 1)))
@@ -1184,7 +1109,7 @@ class BimanualDexCatchSpot(VecTask):
                 - object lin vel [51:54]
                 - object rot vel [54:57]
         """
-
+        return
         mask = torch.zeros_like(actions)
         # mask[:, 0] = 1.0
         self.actions = actions.clone().to(self.device)
@@ -1213,6 +1138,7 @@ class BimanualDexCatchSpot(VecTask):
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
     def post_physics_step(self):
+        return
         if self.controlled_experiment and not self.sim_start:
             user_input = input('go??')
             if user_input.lower() == 'y':

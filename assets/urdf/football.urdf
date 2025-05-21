@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot name="football">
+  <link name="football">
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/Ball_scaled.stl" scale="1.0 1.0 1.0"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/Ball_scaled.stl" scale="1.0 1.0 1.0"/>
+      </geometry>
+    </collision>
+    <inertial>
+        <origin xyz="-0.00108814 0.07591677 0.00004350"/>
+        <mass value="0.50000000"/>
+        <inertia ixx="0.00560679" ixy="0.00000057" ixz="0.00000000" iyy="0.00955040" iyz="-0.00000000" izz="0.00959373"/>
+    </inertial>
+  </link>
+</robot>

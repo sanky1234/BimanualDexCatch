@@ -4,13 +4,13 @@
     <visual>
       <origin xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="ycb/011_banana/textured.obj" scale="0.01 0.01 0.01"/>
+        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/Ball_scaled.stl" scale="0.01 0.01 0.01"/>
       </geometry>
     </visual>
     <collision>
       <origin xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="ycb/011_banana/collision.obj" scale="0.01 0.01 0.01"/>
+        <mesh filename="/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/meshes/Ball_scaled.stl" scale="0.01 0.01 0.01"/>
       </geometry>
     </collision>
     <inertial>
