@@ -229,62 +229,68 @@ class BimanualDexCatchSpot(VecTask):
 
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
-        self.num_a_actions = 0
+        # self.num_a_actions = 0
 
-        self.default_spot_pose = {
-            "forward" : [deg2rad(-90.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), 
-                      deg2rad(0.0), deg2rad(90.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)],
-            "init" : [deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), 
-                      deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)]
-
-
-        }
-
-        self.default_pysonic_pose = {
-            "init" : [deg2rad(00.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), 
-                      deg2rad(0.0), deg2rad(00.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)]
-        }
+        # self.default_spot_pose = {
+        #     "forward" : [deg2rad(-90.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), 
+        #               deg2rad(0.0), deg2rad(90.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)],
+        #     "init" : [deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), 
+        #               deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)]
 
 
-        # # OSC Gains
-        nj = 7   # actual # of joints
-        self.kp = to_torch([150.] * nj, device=self.device)
-        self.kd = 2 * torch.sqrt(self.kp)
-        self.kp_null = to_torch([10.] * nj, device=self.device)
-        self.kd_null = 2 * torch.sqrt(self.kp_null)
-        self.cmd_limit = None                   # filled in later
+        # }
 
-        # # Set control limits,
-        # # TODO!!!
-        self.l_cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
-        self.control_type == "osc" else self.spot_effort_limits[:6]
-        self.r_cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
-            self.control_type == "osc" else self.spot_effort_limits[:6]
+        # self.default_pysonic_pose = {
+        #     "init" : [deg2rad(00.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), 
+        #               deg2rad(0.0), deg2rad(00.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0), deg2rad(0.0)]
+        # }
 
-        # Reset all environments
-        self.reset_idx(torch.arange(self.num_envs, device=self.device, dtype=torch.long))
+        # self.default_spot_pose = to_torch(self.default_spot_pose["forward"] + self.default_pysonic_pose["init"], device=self.device)
 
-        # # Refresh tensors
-        self._refresh()
 
-        # viewer camera initial setting for result recording
-        if self.viewer:
-            from scipy.spatial.transform import Rotation as R
-            # desired viewer camera pose
-            cam_pos = gymapi.Vec3(22.9, 22.2, 2.01)
-            cam_rot = np.array([0.75, -0.33, -0.23, 0.52])
+        # # # # OSC Gains
+        # nj = 7   # actual # of joints
+        # self.kp = to_torch([150.] * nj, device=self.device)
+        # self.kd = 2 * torch.sqrt(self.kp)
+        # self.kp_null = to_torch([10.] * nj, device=self.device)
+        # self.kd_null = 2 * torch.sqrt(self.kp_null)
+        # self.cmd_limit = None                   # filled in later
 
-            r = R.from_quat(cam_rot)
-            forward_vector = np.array([0, 0, 1])
-            cam_direction = r.apply(forward_vector)
 
-            distance = 10.0
-            cam_target = gymapi.Vec3(
-                cam_pos.x + distance * cam_direction[0],
-                cam_pos.y + distance * cam_direction[1],
-                cam_pos.z + distance * cam_direction[2]
-            )
-            self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
+        # self.spot_cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
+        # self.control_type == "osc" else self.spot_effort_limits[:6]
+
+        # # # # Set control limits,
+        # # # # TODO!!!
+        # # self.l_cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
+        # # self.control_type == "osc" else self.spot_effort_limits[:6]
+        # # self.r_cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
+        # #     self.control_type == "osc" else self.spot_effort_limits[:6]
+
+        # # # Reset all environments
+        # # self.reset_idx(torch.arange(self.num_envs, device=self.device, dtype=torch.long))
+
+        # # # # Refresh tensors
+        # # self._refresh()
+
+        # # viewer camera initial setting for result recording
+        # if self.viewer:
+        #     from scipy.spatial.transform import Rotation as R
+        #     # desired viewer camera pose
+        #     cam_pos = gymapi.Vec3(22.9, 22.2, 2.01)
+        #     cam_rot = np.array([0.75, -0.33, -0.23, 0.52])
+
+        #     r = R.from_quat(cam_rot)
+        #     forward_vector = np.array([0, 0, 1])
+        #     cam_direction = r.apply(forward_vector)
+
+        #     distance = 10.0
+        #     cam_target = gymapi.Vec3(
+        #         cam_pos.x + distance * cam_direction[0],
+        #         cam_pos.y + distance * cam_direction[1],
+        #         cam_pos.z + distance * cam_direction[2]
+        #     )
+        #     self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
     def create_sim(self):
         self.sim_params.up_axis = gymapi.UP_AXIS_Z
@@ -722,7 +728,7 @@ class BimanualDexCatchSpot(VecTask):
                                             device=self.device).view(self.num_envs, -1)
         self._object_shift_count = torch.ones(self.num_envs, dtype=torch.uint8, device=self.device) * -1
 
-        self.setup_controlled_experiment()
+        # self.setup_controlled_experiment()
 
     def save_or_load_data(self, file_path, data, overwrite=False):
         if os.path.exists(file_path):
@@ -738,38 +744,38 @@ class BimanualDexCatchSpot(VecTask):
             print(f"[CE] Data has been saved to {file_path}.")
         return data
 
-    def setup_controlled_experiment(self):
-        """
-            This setup is a code implementation used to arbitrarily control objects
-            for the per-object experiments in the paper and derive the corresponding results.
-            (See Figure 9 in our paper)
-        """
-        if self.controlled_experiment:
-            self.ce_count = 0
-            self.ce_env = self.num_envs - 1
+    # def setup_controlled_experiment(self):
+    #     """
+    #         This setup is a code implementation used to arbitrarily control objects
+    #         for the per-object experiments in the paper and derive the corresponding results.
+    #         (See Figure 9 in our paper)
+    #     """
+    #     if self.controlled_experiment:
+    #         self.ce_count = 0
+    #         self.ce_env = self.num_envs - 1
 
-            # controlled experiment indices
-            self.ce_indices = np.repeat(np.arange(len(self.objects)), self.num_controlled_experiment_per_object)
-            np.random.shuffle(self.ce_indices)
+    #         # controlled experiment indices
+    #         self.ce_indices = np.repeat(np.arange(len(self.objects)), self.num_controlled_experiment_per_object)
+    #         np.random.shuffle(self.ce_indices)
 
-            ce_obj_state_list = []
-            for i in range(len(self.ce_indices)):
-                # controlled experiment uniform random pose & velocity
-                self._reset_uniform_random_object_state(obj='A', env_ids=[self.ce_env])
-                ce_obj_state = self._init_object_state[self.ce_env].clone()
-                ce_obj_state_list.append(ce_obj_state)
-            self.ce_states = torch.stack(ce_obj_state_list)
+    #         ce_obj_state_list = []
+    #         for i in range(len(self.ce_indices)):
+    #             # controlled experiment uniform random pose & velocity
+    #             self._reset_uniform_random_object_state(obj='A', env_ids=[self.ce_env])
+    #             ce_obj_state = self._init_object_state[self.ce_env].clone()
+    #             ce_obj_state_list.append(ce_obj_state)
+    #         self.ce_states = torch.stack(ce_obj_state_list)
 
-            # check existing evaluation files
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            path_to_indices = os.path.join(current_dir, '..', 'evaluation', 'controlled_exp_object_indices.npy')
-            path_to_obj_state = os.path.join(current_dir, '..', 'evaluation', 'controlled_exp_object_states.npy')
+    #         # check existing evaluation files
+    #         current_dir = os.path.dirname(os.path.abspath(__file__))
+    #         path_to_indices = os.path.join(current_dir, '..', 'evaluation', 'controlled_exp_object_indices.npy')
+    #         path_to_obj_state = os.path.join(current_dir, '..', 'evaluation', 'controlled_exp_object_states.npy')
 
-            self.ce_indices = self.save_or_load_data(file_path=path_to_indices, data=self.ce_indices, overwrite=False)
-            self.ce_states = self.save_or_load_data(file_path=path_to_obj_state, data=self.ce_states.cpu().numpy(), overwrite=False)
-            self.ce_states = torch.from_numpy(self.ce_states)
-            print("[CE] Indices for Controlled Experiment: ", self.ce_indices)
-            print("[CE] States for Controlled Experiment: ", self.ce_states)
+    #         self.ce_indices = self.save_or_load_data(file_path=path_to_indices, data=self.ce_indices, overwrite=False)
+    #         self.ce_states = self.save_or_load_data(file_path=path_to_obj_state, data=self.ce_states.cpu().numpy(), overwrite=False)
+    #         self.ce_states = torch.from_numpy(self.ce_states)
+    #         print("[CE] Indices for Controlled Experiment: ", self.ce_indices)
+    #         print("[CE] States for Controlled Experiment: ", self.ce_states)
 
     # Uncomment to retrieve the current viewer camera transformation
     # def render(self):
@@ -852,15 +858,8 @@ class BimanualDexCatchSpot(VecTask):
             self.reset_buf, self.progress_buf, self.actions, self._l_qd, self._r_qd, self.states, self.reward_settings, self.max_episode_length
         )
 
-        if self.num_multi_agents > 1:
-            rew_throw_buf, reset_buf = compute_throw_reward(
-                self.reset_buf, self.actions, self.progress_buf, self.states, self.reward_settings, self.max_episode_length)
-
-            self.reset_buf = self.reset_buf | reset_buf
-            mean_rew = self.alpha * rew_catch_buf + (1 - self.alpha) * rew_throw_buf
-            self.rew_bufs[:] = mean_rew.unsqueeze(-1).repeat(1, self.rew_bufs.shape[1])
-        else:
-            self.rew_buf = 1.0 * rew_catch_buf
+       
+        self.rew_buf = 1.0 * rew_catch_buf
 
     def compute_observations(self):
         self._refresh()
@@ -872,16 +871,9 @@ class BimanualDexCatchSpot(VecTask):
                    "object_pos_relative_left_hand", "object_pos_relative_right_hand"]
         obs += ["l_eef_pos"] + ["l_eef_quat"] + ["r_eef_pos"] + ["r_eef_quat"]
 
-        if self.num_multi_agents > 1:
-            for agent_id in range(self.num_multi_agents):
-                if agent_id == 1:
-                    obs += ["reset_buf"]
-                self.obs_bufs["obs" + str(agent_id)] = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
-                # self.obs_bufs[:, agent_id] = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
-            return self.obs_bufs
-        else:
-            self.obs_buf = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
-            return self.obs_buf
+   
+        self.obs_buf = torch.cat([self.states[ob].reshape(self.num_envs, -1) for ob in obs], dim=-1)
+        return self.obs_buf
 
         # # TODO, should be removed later..
         # if torch.any(torch.isnan(self.obs_buf)):
@@ -908,14 +900,7 @@ class BimanualDexCatchSpot(VecTask):
         rand_obj_ids = torch.randint(low=first_id, high=last_id, size=(len(env_ids),), device=self.device)
 
         idx = None
-        if self.controlled_experiment and self.uniform_test and (self.ce_env in env_ids):     # use last environment for controlled exp
-            print("last env is reset!!!")
-            idx = torch.where(env_ids == self.ce_env)[0].item()
-            ce_idx = self.ce_indices[self.ce_count]
-            rand_obj_ids[idx] = ce_idx + self._obj_ref_id
-            self._init_object_state[env_ids[idx]] = self.ce_states[self.ce_count]
-            print("curr pose: ", self.ce_states[self.ce_count])
-            self.ce_count += 1
+      
 
         self._object_idx_vec[env_ids] = rand_obj_ids.clone()
         indices = torch.searchsorted(self.obj_id_size_keys, rand_obj_ids)
@@ -1139,10 +1124,10 @@ class BimanualDexCatchSpot(VecTask):
 
     def post_physics_step(self):
         return
-        if self.controlled_experiment and not self.sim_start:
-            user_input = input('go??')
-            if user_input.lower() == 'y':
-                self.sim_start = True
+        # if self.controlled_experiment and not self.sim_start:
+        #     user_input = input('go??')
+        #     if user_input.lower() == 'y':
+        #         self.sim_start = True
         self.progress_buf += 1
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
@@ -1263,52 +1248,3 @@ def compute_catch_reward(
     return rewards, reset_buf
 
 
-# @torch.jit.script
-def compute_throw_reward(
-    reset_buf, actions, progress_buf, states, reward_settings, max_episode_length
-):
-    # type: (Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor]
-
-    progress_mask = torch.where(progress_buf==0, 1, -1)
-
-    _act_obj_lin_vel = actions[:, 44:47]
-    _act_obj_rot_vel = actions[:, 47:50]
-
-    act_obj_lin_vel = torch.norm(_act_obj_lin_vel, dim=-1) * progress_mask
-    act_obj_rot_vel = torch.norm(_act_obj_rot_vel, dim=-1) * progress_mask
-
-    object_idx = states["object_idx_vec"].type(torch.long)
-    object_size = states["object_size_vec"]
-
-    ar_idx = torch.arange(len(object_idx), dtype=torch.long)
-
-    # object height for reset_buf
-    temp_pos = states["object_pos"][ar_idx, object_idx, 2]
-    object_height = temp_pos - reward_settings["table_height"]
-
-    # throw reward calc.
-    obj_lin_vel = states["object_pos_vel"][ar_idx, object_idx, :]
-    obj_rot_vel = states["object_rot_vel"][ar_idx, object_idx, :]
-    negative_lin_vel_mask = torch.where(obj_lin_vel[:, 0] > 0, 0.0, 1.0)
-    obj_pos_vel_norm = torch.norm(obj_lin_vel, dim=-1) * negative_lin_vel_mask
-    obj_rot_vel_norm = torch.norm(obj_rot_vel, dim=-1)
-
-    lin_scale = 27.78  # Max speed: 27.78 m/s, equivalent to 100 km/h (approximate speed of a fastball thrown by a pitcher)
-    rot_scale = 209.44  # Max 2000 RPM, representing the typical spin rate of a curveball thrown by a pitcher
-    obj_pos_vel_reward = 1.0 - torch.exp(-5.0 * obj_pos_vel_norm)
-    obj_rot_vel_reward = 1.0 - torch.exp(-5.0 * obj_rot_vel_norm)
-
-    obj_throw_reward = 0.5 * obj_pos_vel_reward + 0.5 * obj_rot_vel_reward
-
-    act_lin_vel_reward = torch.tanh(1.0 * act_obj_lin_vel)
-    act_rot_vel_reward = torch.tanh(1.0 * act_obj_rot_vel)
-    act_reward = 0.5 * act_lin_vel_reward + 0.5 * act_rot_vel_reward
-
-    # reward_settings["r_hand_scale"]
-    rewards = (0.8 * obj_throw_reward + 0.2 * act_reward)
-
-    # Compute resets
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (object_height > 3.0),
-                            torch.ones_like(reset_buf), reset_buf)
-
-    return rewards, reset_buf

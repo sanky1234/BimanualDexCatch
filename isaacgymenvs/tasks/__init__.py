@@ -50,6 +50,7 @@ from .dream_catch_ur3 import DreamCatchUR3
 from .dream_catch_ur3_allegro import DreamCatchUR3Allegro
 from .bimanual_dex_catch_ur3_allegro import BimanualDexCatchUR3Allegro
 from .bimanual_dex_catch_spot import BimanualDexCatchSpot
+from .bimanal_dex_catch_spot_CEM import BimanualDexCatchSpotCEM
 
 from .allegro_kuka.allegro_kuka_reorientation import AllegroKukaReorientation
 from .allegro_kuka.allegro_kuka_regrasping import AllegroKukaRegrasping
@@ -59,6 +60,7 @@ from .allegro_kuka.allegro_kuka_two_arms_reorientation import AllegroKukaTwoArms
 
 from .industreal.industreal_task_pegs_insert import IndustRealTaskPegsInsert
 from .industreal.industreal_task_gears_insert import IndustRealTaskGearsInsert
+
 
 
 def resolve_allegro_kuka(cfg, *args, **kwargs):
@@ -118,5 +120,6 @@ isaacgym_task_map = {
     "DreamCatchUR3": DreamCatchUR3,
     "DreamCatchUR3Allegro": DreamCatchUR3Allegro,
     "BimanualDexCatchUR3Allegro": BimanualDexCatchUR3Allegro,
-    "BimanualDexCatchSpot": BimanualDexCatchSpot
+    "BimanualDexCatchSpot": BimanualDexCatchSpot,
+    "BimanualDexCatchSpotCEM": BimanualDexCatchSpotCEM
 }
