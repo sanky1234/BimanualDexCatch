@@ -115,6 +115,9 @@ class Env(ABC):
         self.clip_obs = config["env"].get("clipObservations", np.Inf)
         self.clip_actions = config["env"].get("clipActions", np.Inf)
 
+
+        
+
         # Total number of training frames since the beginning of the experiment.
         # We get this information from the learning algorithm rather than tracking ourselves.
         # The learning algorithm tracks the total number of frames since the beginning of training and accounts for
@@ -376,6 +379,9 @@ class VecTaskSimple(EnvSimple):
 
         self.dt: float = self.sim_params.dt
 
+        self.sample_time = self.cfg["env"].get("stability_time", 0.5)
+        self.num_of_steps = int(self.sample_time / self.dt)
+
         # optimization flags for pytorch JIT
         torch._C._jit_set_profiling_mode(False)
         torch._C._jit_set_profiling_executor(False)
@@ -516,14 +522,15 @@ class VecTaskSimple(EnvSimple):
         self.pre_physics_step(action_tensor)
 
         # step physics and render each frame
-        for i in range(self.control_freq_inv):
-            if self.force_render:
-                self.render()
-            self.gym.simulate(self.sim)
+        for j in range(self.num_of_steps):
+            for i in range(self.control_freq_inv):
+                if self.force_render:
+                    self.render()
+                self.gym.simulate(self.sim)
 
         # to fix!
-        if self.device == 'cpu':
-            self.gym.fetch_results(self.sim, True)
+        # if self.device == 'cpu':
+        self.gym.fetch_results(self.sim, True)
 
         # compute observations, rewards, resets, ...
         self.post_physics_step()

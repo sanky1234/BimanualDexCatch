@@ -1,24 +1,41 @@
 import hydra
 from omegaconf import DictConfig, OmegaConf
+import logging 
+import os 
+from datetime import datetime 
+    
+import isaacgym 
+from hydra.utils import to_absolute_path 
+from isaacgymenvs.tasks import isaacgym_task_map 
+import gym 
+from isaacgymenvs.utils.reformat import omegaconf_to_dict, print_dict 
+from isaacgymenvs.utils.utils import set_np_formatting, set_seed 
+import isaacgymenvs
+import torch
+from torchrl.modules import TruncatedNormal
 
+
+
+def truncated_gaussian_samples(mean, std, low, high, num_samples):
+    """
+    Generate samples from a truncated Gaussian distribution.
+    """
+
+    mu = mean.unsqueeze(0).expand(num_samples, -1)
+    scale = std.unsqueeze(0).expand(num_samples, -1)
+    low_limit = low.unsqueeze(0).expand(num_samples, -1)
+    high_limit = high.unsqueeze(0).expand(num_samples, -1)
+
+    dist = TruncatedNormal(loc=mu, scale=scale, low=low_limit, high=high_limit)
+    samples = dist.rsample()
+    return samples
 
 @hydra.main(version_base="1.1", config_name="config_opt", config_path="./cfg")
 def launch_cem(cfg: DictConfig): 
     """
     Launches the CEM Optimization Process with given configrations. 
     """
-    import logging 
-    import os 
-    from datetime import datetime 
-     
-    import isaacgym 
-    from hydra.utils import to_absolute_path 
-    from isaacgymenvs.tasks import isaacgym_task_map 
-    import gym 
-    from isaacgymenvs.utils.reformat import omegaconf_to_dict, print_dict 
-    from isaacgymenvs.utils.utils import set_np_formatting, set_seed 
-    import isaacgymenvs
-    import torch
+    
 
     cfg_dict = omegaconf_to_dict(cfg)
     print_dict(cfg_dict)
@@ -48,10 +65,29 @@ def launch_cem(cfg: DictConfig):
         #     step_trigger=lambda step: step % cfg.capture_video_freq == 0,
         #     video_length=cfg.capture_video_len,
         # )
+
     
+
+    football_pose = torch.zeros(13, device=envs.device)
+    football_pose[0] = 0.2
+    football_pose[2] = 0.8
+    football_pose[6] = 1.0
+    envs.set_initial_football_state(football_pose)
+
+    mean = torch.zeros(len(envs.joint_idx_mapping), device=envs.device)
+    std = torch.ones(len(envs.joint_idx_mapping), device=envs.device) * 1.0
+    low = envs._dof_lower_limits[envs.joint_idx_mapping]
+    high = envs._dof_upper_limits[envs.joint_idx_mapping]
     for step in range(1000):
-        actions = torch.zeros((envs.num_envs, len(envs.joint_idx_mapping)), device=envs.device)  # no-op actions
-        actions[:, 0] = ((0.1 * step) % 3.14)
+        actions = truncated_gaussian_samples(
+            mean=mean,
+            std=std,
+            low=low,
+            high=high,
+            num_samples=envs.num_envs
+        )
+        # actions = torch.zeros((envs.num_envs, len(envs.joint_idx_mapping)), device=envs.device)  # no-op actions
+        # actions[:, 0] = ((0.1 * step) % 3.14)
 
 
         envs.step(actions)

@@ -222,15 +222,15 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         for tag in self.objects:
             obj_dof_props = self.gym.get_asset_dof_properties(self.objects[tag].asset)
             for prop in obj_dof_props:
-                # if not prop['hasLimits']:
-                # prop['lower'] = 0.0
-                # prop['upper'] = 0.0
-                prop['driveMode'] = gymapi.DOF_MODE_POS
-                prop['stiffness'] = 100
-                prop['damping'] = 100
-                prop['velocity'] = 5
-                prop['effort'] = 1
-                prop['friction'] = 100.0
+                if not prop['hasLimits']:
+                    prop['lower'] = 0.0
+                    prop['upper'] = 0.0
+                    prop['driveMode'] = gymapi.DOF_MODE_POS
+                    prop['stiffness'] = 100
+                    prop['damping'] = 100
+                    prop['velocity'] = 5
+                    prop['effort'] = 1
+                    prop['friction'] = 100.0
                 # prop['armature'] = 0.0
             self.objects[tag].dof_prop = obj_dof_props
 
@@ -411,7 +411,9 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         self._init_object_state[:, 7] = 1.0     # unit quaternion
 
 
-
+    def set_initial_football_state(self, pose):
+        self._init_object_state = pose.unsqueeze(0).expand(self.num_envs, -1)
+        # self.football_pose
 
 
 
@@ -438,7 +440,13 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         if actions.shape[1] != len(self.joint_idx_mapping):
             actions = torch.zeros((self.num_envs, len(self.joint_idx_mapping)), dtype=torch.float32, device=self.device)
 
+        self.gym.refresh_actor_root_state_tensor(self.sim)
+        root_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
+        root_states = gymtorch.wrap_tensor(root_tensor)
 
+        object_indices = torch.arange(self.num_envs, device=self.device) * 2 + self.objects["football"].id
+        root_states[object_indices,:] = self._init_object_state
+        self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(root_states))
 
         self.actions = actions.clone().to(self.device)
         robot1_u_arm, robot1_u_finger = self.actions[:, :7], self.actions[:, 7:13]
@@ -458,6 +466,7 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         stacked_state_flat = stacked_state.view(-1,2)
 
         self.gym.set_dof_state_tensor(self.sim, gymtorch.unwrap_tensor(stacked_state_flat))
+        self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(action.view(-1)))
 
     # implement pre-physics simulation code here
     #    - e.g. apply actions
