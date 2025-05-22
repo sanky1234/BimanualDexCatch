@@ -104,6 +104,10 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         self.objects = AttrDict()
 
         self.num_robot_dofs = 2*7 + 2*6 # 2 arms, 2 grippers. 7 dof for arm, 6 dof for gripper
+
+        self.input_control_names = self.cfg["input_control_names"]
+
+
         
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
@@ -194,8 +198,8 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
 
         for i in range(self.num_spot_dofs):
             if self.physics_engine == gymapi.SIM_PHYSX:
-                spot_dof_props['stiffness'][i] = 0.0
-                spot_dof_props['damping'][i] = 0.0
+                spot_dof_props['stiffness'][i] = 1000.0
+                spot_dof_props['damping'][i] = 300.0
             else: 
                 spot_dof_props['stiffness'][i] = 7000.0
                 spot_dof_props['damping'][i] = 50.0
@@ -310,6 +314,17 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         self.obj_id_size_values = to_torch(id_size_list, device=self.device)
         # self.obj_id_size_values = to_torch(list(id_size_dict.values()), device=self.device)
 
+        # Create a joint mapping 
+        env_ptr = self.envs[0]
+        
+        dof_names = self.gym.get_actor_dof_names(env_ptr, self._spot_id)
+
+        self.isaacgym_control_names = dof_names 
+        self.joint_idx_mapping = [self.isaacgym_control_names.index(name) for name in self.input_control_names]
+        print("Joint idx mapping: ", self.joint_idx_mapping)
+        print("IsaacGym control names: ", self.isaacgym_control_names)
+
+
         self.spot_body_dict = self.gym.get_actor_rigid_body_dict(env_ptr, self._spot_id)
         """
         Rigid body flags:
@@ -420,7 +435,30 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
 
         
     def pre_physics_step(self, actions):
-        pass 
+        if actions.shape[1] != len(self.joint_idx_mapping):
+            actions = torch.zeros((self.num_envs, len(self.joint_idx_mapping)), dtype=torch.float32, device=self.device)
+
+
+
+        self.actions = actions.clone().to(self.device)
+        robot1_u_arm, robot1_u_finger = self.actions[:, :7], self.actions[:, 7:13]
+        robot2_u_arm, robot2_u_finger = self.actions[:, 13:20], self.actions[:, 20:26]
+        self._robot1_arm_control = robot1_u_arm
+        self._robot1_finger_control = robot1_u_finger
+        self._robot2_arm_control = robot2_u_arm
+        self._robot2_finger_control = robot2_u_finger
+
+        action = torch.zeros((self.num_envs, self.num_spot_dofs), dtype=torch.float32, device=self.device)
+        velocity = torch.zeros_like(action)
+
+        
+        action[:,self.joint_idx_mapping] = self.actions 
+
+        stacked_state = torch.stack([action, velocity], dim=2)
+        stacked_state_flat = stacked_state.view(-1,2)
+
+        self.gym.set_dof_state_tensor(self.sim, gymtorch.unwrap_tensor(stacked_state_flat))
+
     # implement pre-physics simulation code here
     #    - e.g. apply actions
 

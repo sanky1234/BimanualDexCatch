@@ -50,7 +50,10 @@ def launch_cem(cfg: DictConfig):
         # )
     
     for step in range(1000):
-        actions = torch.zeros((envs.num_envs,0), device=envs.device)  # no-op actions
+        actions = torch.zeros((envs.num_envs, len(envs.joint_idx_mapping)), device=envs.device)  # no-op actions
+        actions[:, 0] = ((0.1 * step) % 3.14)
+
+
         envs.step(actions)
         # import pdb; pdb.set_trace()
 

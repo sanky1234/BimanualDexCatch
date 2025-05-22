@@ -3,6 +3,13 @@ name: BimanualDexCatchSpotCEM
 
 physics_engine: ${..physics_engine}
 
+input_control_names: ["robot1/joint1", "robot1/joint2", "robot1/joint3", "robot1/joint4", "robot1/joint5", "robot1/joint6", "robot1/joint7",
+                      # "robot1/index_q1", "robot1/middle_q1", "robot1/ring_q1", "robot1/pinky_q1", "robot1/thumb_q1", "robot1/thumb_q2",
+                      "robot2/joint1", "robot2/joint2", "robot2/joint3", "robot2/joint4", "robot2/joint5", "robot2/joint6", "robot2/joint7"
+                      # , "robot2/index_q1", "robot2/middle_q1", "robot2/ring_q1", "robot2/pinky_q1", "robot2/thumb_q1", "robot2/thumb_q2",
+                      ]
+
+
 # if given, will override the device setting in gym. 
 env:
   numEnvs: ${resolve_default:8192,${...num_envs}}
