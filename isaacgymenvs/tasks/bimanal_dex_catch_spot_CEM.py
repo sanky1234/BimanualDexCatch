@@ -18,8 +18,11 @@ from isaacgymenvs.tasks.utils.general_utils import deg2rad
 
 from gym import spaces 
 
+# For contact rewards
 import pybullet as p
 import pybullet_data
+from scipy.spatial import ConvexHull
+
 
 def get_assets(attr_dict):
     assets = [] 
@@ -119,6 +122,7 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         # Set up environment
         p.setAdditionalSearchPath(pybullet_data.getDataPath())  # For plane.urdf and other data
         p.setGravity(0, 0, -9.81)
+        p.setPhysicsEngineParameter(contactBreakingThreshold=0.01)
 
         self.planeId = p.loadURDF("plane.urdf")
         self.pybullet_robot = p.loadURDF("/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/spot_7dof_psyonic_no_base.urdf", [0.0, 0.0, 0.7], [0,0,0,1], useFixedBase=True)
@@ -533,13 +537,13 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
     def post_physics_step(self):
         self._refresh()
 
-        # contact_reward = self.compute_contact_rewards()
+        contact_reward = self.compute_contact_rewards()
 
         stability_reward = self.compute_stability_reward()
 
         manipulability_reward = self.compute_manipulability_reward()
 
-        self.total_reward = stability_reward + manipulability_reward
+        self.total_reward = stability_reward + manipulability_reward + contact_reward
 
         # pass
         # implement post-physics simulation code here
@@ -570,18 +574,34 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
                 pybullet_index = self.pybullet_joint_idx_mapping[j]
                 gym_index = self.joint_idx_mapping[j]
                 p.resetJointState(self.pybullet_robot, pybullet_index, joint_dof_states[i,0, gym_index].cpu().numpy())
-            for z in range(100):
-                p.stepSimulation()
-                contacts = p.getContactPoints()
-                if len(contacts) > 0:
-                    print("Contact detected after ", z, " steps")
-                    break
-            for c in contacts:
-                print(f"Contact between body {c[1]} link {c[3]} and body {c[2]} link {c[4]}")
-                print(f"Contact position on A: {c[5]}, on B: {c[6]}")
-                print(f"Contact normal on B: {c[7]}")
-                print(f"Contact distance: {c[8]}, normal force: {c[9]}")
-                print('---')
+            
+            p.stepSimulation()
+
+
+            # get all the contact points between the robot and the football
+            contacts = p.getContactPoints(self.pybullet_robot, self.pybullet_football)
+            contact_floor = p.getContactPoints(self.pybullet_football, self.planeId)
+            # not a successful catch if the robot is not in contact with the ball
+            if (len(contacts) == 0) or (len(contact_floor) > 0):
+                contact_reward[i] += -10.0
+
+            if len(contacts) > 0:
+                # print("Contact points: ", contacts)
+                contact_reward[i] += len(contacts) 
+                
+                points_on_football = np.array([contact[5] for contact in contacts])
+
+                if len(points_on_football) > 4:
+                    points_np = np.array(points_on_football)
+                    hull = ConvexHull(points_np)
+                    volume = hull.volume
+                    contact_reward[i] += volume
+                else:
+                    contact_reward[i] -= 1.0
+            print("Environment: ", i , " Contact points: ", len(contacts), " Contact reward: ", contact_reward[i].item())
+            
+        return contact_reward
+         
 
             # import pdb; pdb.set_trace()
 
