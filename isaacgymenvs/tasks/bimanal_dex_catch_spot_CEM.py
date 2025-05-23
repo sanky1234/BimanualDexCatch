@@ -583,6 +583,7 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         object_indices = torch.arange(self.num_envs, device=self.device) * 2 + self.objects["football"].id
         object_states = root_states[object_indices, :]
 
+        self.actual_joint_states = joint_state_pos[:, self.joint_idx_mapping]
 
         for i in range(self.num_envs):
             # set the pybullet scene
@@ -630,7 +631,7 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
                     contact_reward[i] += scale_volume* volume
                 else:
                     contact_reward[i] -= 1.0
-            print("Environment: ", i , " Contact points: ", len(contacts), " Contact reward: ", contact_reward[i].item())
+            # print("Environment: ", i , " Contact points: ", len(contacts), " Contact reward: ", contact_reward[i].item())
             
         return contact_reward
          

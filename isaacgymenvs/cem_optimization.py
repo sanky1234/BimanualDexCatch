@@ -13,8 +13,10 @@ from isaacgymenvs.utils.utils import set_np_formatting, set_seed
 import isaacgymenvs
 import torch
 from torchrl.modules import TruncatedNormal
-
-
+import numpy as np
+from scipy.spatial.transform import Rotation as R
+import itertools
+import pandas as pd
 
 def truncated_gaussian_samples(mean, std, low, high, num_samples):
     """
@@ -66,45 +68,77 @@ def launch_cem(cfg: DictConfig):
         #     video_length=cfg.capture_video_len,
         # )
 
-    
     verbose = True
-    football_pose = torch.zeros(13, device=envs.device)
-    football_pose[0] = -0.2
-    football_pose[2] = 0.8
-    football_pose[6] = 1.0
-    envs.set_initial_football_state(football_pose)
-
-    num_elites = int(envs.num_envs * 0.25)
-
-    mean = torch.zeros(len(envs.joint_idx_mapping), device=envs.device)
-    std = torch.ones(len(envs.joint_idx_mapping), device=envs.device) * 1.0
-    low = envs._dof_lower_limits[envs.joint_idx_mapping]
-    high = envs._dof_upper_limits[envs.joint_idx_mapping]
-    for step in range(1000):
-        actions = truncated_gaussian_samples(
-            mean=mean,
-            std=std,
-            low=low,
-            high=high,
-            num_samples=envs.num_envs
-        )
-        # actions = torch.zeros((envs.num_envs, len(envs.joint_idx_mapping)), device=envs.device)  # no-op actions
-        # actions[:, 0] = ((0.1 * step) % 3.14)
+    percent_elite = 0.25
+    max_steps = 100
+    # Ranges for position and orientation
+    x_range = np.arange(-0.2, 0.487 + 1e-6, 0.1)
+    y_range = np.arange(-0.2, 0.1 + 1e-6, 0.1)
+    z_range = np.arange(0.6, 1.52 + 1e-6, 0.1)
+    pitch_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/18.0)
+    yaw_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/18.0)
+    roll_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/18.0)
 
 
-        envs.step(actions)
-        # import pdb; pdb.set_trace()
+    for x_pose in x_range:
+        for y_pose in y_range:
+            for z_pose in z_range:
+                for ball_pitch in pitch_range:
+                    for ball_yaw in yaw_range:
+                        for ball_roll in roll_range:
+                            football_pose = torch.zeros(13, device=envs.device)
+                            football_pose[0] = x_pose
+                            football_pose[1] = y_pose
+                            football_pose[2] = z_pose
+                            r = R.from_euler('xyz', [ball_pitch, ball_yaw, ball_roll], degrees=False)
+                            football_quat = r.as_quat() # returns (x, y, z, w)
+                            football_pose[3] = football_quat[0]
+                            football_pose[4] = football_quat[1]
+                            football_pose[5] = football_quat[2]
+                            football_pose[6] = football_quat[3]
 
-        rewards = envs.total_reward
-        elite_indices = rewards.argsort()[-num_elites:]  # top-k
-        
-        elites = actions[elite_indices]
-        
-        mean = elites.mean(axis=0)
-        std = elites.std(axis=0)
 
-        if verbose:
-            print(f"Iter {step}: best reward = {rewards[elite_indices[-1]]:.3f}, mean = {mean}, std = {std}")
+                            envs.set_initial_football_state(football_pose)
+                            num_elites = int(envs.num_envs * percent_elite)
+                            mean = torch.zeros(len(envs.joint_idx_mapping), device=envs.device)
+                            std = torch.ones(len(envs.joint_idx_mapping), device=envs.device) * 1.0
+                            low = envs._dof_lower_limits[envs.joint_idx_mapping]
+                            high = envs._dof_upper_limits[envs.joint_idx_mapping]
+                            for step in range(max_steps):
+                                    actions = truncated_gaussian_samples(
+                                        mean=mean,
+                                        std=std,
+                                        low=low,
+                                        high=high,
+                                        num_samples=envs.num_envs
+                                    )
+                                    # actions = torch.zeros((envs.num_envs, len(envs.joint_idx_mapping)), device=envs.device)  # no-op actions
+                                    # actions[:, 0] = ((0.1 * step) % 3.14)
+
+
+                                    envs.step(actions)
+                                    # import pdb; pdb.set_trace()
+
+                                    rewards = envs.total_reward
+                                    elite_indices = rewards.argsort()[-num_elites:]  # top-k
+                                    
+                                    elites = envs.actual_joint_states[elite_indices]
+                                    
+                                    mean = elites.mean(axis=0)
+                                    std = elites.std(axis=0)
+
+                                    if verbose:
+                                        print(f"Iter {step}: best reward = {rewards[elite_indices[-1]]:.3f}, mean = {mean}, std = {std}")
+                            elites_np = elites.cpu().numpy()  # (N, action_dim)
+
+                            rows = [[x_pose, y_pose, z_pose, ball_pitch, ball_yaw, ball_roll] + list(elite) for elite in elites_np]
+
+                            pose_headers = ['x', 'y', 'z', 'roll', 'pitch', 'yaw']
+                            action_headers = [name for name in envs.input_control_names]
+                            headers = pose_headers + action_headers
+                            df = pd.DataFrame(rows, columns=headers)
+                            df.to_csv(f"./cem_results/football_pose_{x_pose}_{y_pose}_{z_pose}_{ball_pitch}_{ball_yaw}_{ball_roll}.csv", index=False)
+                            print(f"Saved elite actions for football pose {x_pose}, {y_pose}, {z_pose}, {ball_pitch}, {ball_yaw}, {ball_roll} to CSV.")
 
 
 if __name__ == "__main__":
