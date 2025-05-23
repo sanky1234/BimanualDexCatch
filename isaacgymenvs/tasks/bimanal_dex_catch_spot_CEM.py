@@ -18,6 +18,8 @@ from isaacgymenvs.tasks.utils.general_utils import deg2rad
 
 from gym import spaces 
 
+import pybullet as p
+import pybullet_data
 
 def get_assets(attr_dict):
     assets = [] 
@@ -111,6 +113,18 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
         self._refresh()
+
+        ####################### pybullet init  for contact detection #######################
+        self.physicsClient = p.connect(p.GUI)
+        # Set up environment
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())  # For plane.urdf and other data
+        p.setGravity(0, 0, -9.81)
+
+        self.planeId = p.loadURDF("plane.urdf")
+        self.pybullet_robot = p.loadURDF("/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/spot_7dof_psyonic_no_base.urdf", [0.0, 0.0, 0.7], [0,0,0,1], useFixedBase=True)
+        self.pybullet_football = p.loadURDF("/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/football.urdf", [0.2, 0.0, 0.3], [0,0,0,1], useFixedBase=False)
+        
+
 
     def create_sim(self):
         self.sim_params.up_axis = gymapi.UP_AXIS_Z
