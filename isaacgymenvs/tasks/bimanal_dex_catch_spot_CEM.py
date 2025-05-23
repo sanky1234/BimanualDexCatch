@@ -123,8 +123,16 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         self.planeId = p.loadURDF("plane.urdf")
         self.pybullet_robot = p.loadURDF("/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/spot_7dof_psyonic_no_base.urdf", [0.0, 0.0, 0.7], [0,0,0,1], useFixedBase=True)
         self.pybullet_football = p.loadURDF("/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/football.urdf", [0.2, 0.0, 0.3], [0,0,0,1], useFixedBase=False)
-        
+        self.pybullet_num_joints = p.getNumJoints(self.pybullet_robot)
 
+        self.pybullet_joint_idx_mapping = -1 * np.ones(len(self.input_control_names), dtype=int)
+
+        for i,name in enumerate(self.input_control_names):
+            for j in range(self.pybullet_num_joints):
+                joint_name = p.getJointInfo(self.pybullet_robot, j)[1].decode("utf-8")
+                if name == joint_name:
+                    self.pybullet_joint_idx_mapping[i] = j
+                    break
 
     def create_sim(self):
         self.sim_params.up_axis = gymapi.UP_AXIS_Z
@@ -525,7 +533,7 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
     def post_physics_step(self):
         self._refresh()
 
-        # contact_reward = self.compute_contact_rewards()
+        contact_reward = self.compute_contact_rewards()
 
         stability_reward = self.compute_stability_reward()
 
@@ -539,7 +547,31 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
     def compute_contact_rewards(self):
         contact_reward = torch.zeros(self.num_envs, device=self.device)
         # contacts = self.gym.get_rigid_contacts(self.sim)
-        import pdb; pdb.set_trace()
+        # get current joint dof 
+        joint_dof_tensor = self.gym.acquire_dof_state_tensor(self.sim)
+        joint_dof_states = gymtorch.wrap_tensor(joint_dof_tensor).view(self.num_envs, 2, self.num_spot_dofs)
+
+        # get current root states
+        root_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
+        root_states = gymtorch.wrap_tensor(root_tensor)
+
+        # get only the object states
+        object_indices = torch.arange(self.num_envs, device=self.device) * 2 + self.objects["football"].id
+        object_states = root_states[object_indices, :]
+
+
+        for i in range(self.num_envs):
+            # set the pybullet scene
+            p.resetBasePositionAndOrientation(self.pybullet_football, object_states[i, :3].cpu().numpy(), object_states[i, 3:7].cpu().numpy())
+            p.resetBaseVelocity(self.pybullet_football, object_states[i, 7:10].cpu().numpy(), object_states[i, 10:13].cpu().numpy())
+            for j,name in enumerate(self.input_control_names):
+                pybullet_index = self.pybullet_joint_idx_mapping[j]
+                gym_index = self.joint_idx_mapping[j]
+                p.resetJointState(self.pybullet_robot, pybullet_index, joint_dof_states[i,0, gym_index].cpu().numpy())
+            
+
+
+            import pdb; pdb.set_trace()
         
 
 
