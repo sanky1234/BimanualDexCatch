@@ -568,10 +568,21 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
                 pybullet_index = self.pybullet_joint_idx_mapping[j]
                 gym_index = self.joint_idx_mapping[j]
                 p.resetJointState(self.pybullet_robot, pybullet_index, joint_dof_states[i,0, gym_index].cpu().numpy())
-            
-
+            for z in range(100):
+                p.stepSimulation()
+                contacts = p.getContactPoints()
+                if len(contacts) > 0:
+                    print("Contact detected after ", z, " steps")
+                    break
+            for c in contacts:
+                print(f"Contact between body {c[1]} link {c[3]} and body {c[2]} link {c[4]}")
+                print(f"Contact position on A: {c[5]}, on B: {c[6]}")
+                print(f"Contact normal on B: {c[7]}")
+                print(f"Contact distance: {c[8]}, normal force: {c[9]}")
+                print('---')
 
             import pdb; pdb.set_trace()
+
         
 
 
@@ -610,7 +621,5 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         dist = torch.norm(current_pose - initial_pose, dim=1)
 
         stability_reward = -dist
-        import pdb; pdb.set_trace()
-
         return stability_reward
 
