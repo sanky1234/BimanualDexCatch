@@ -69,7 +69,7 @@ def launch_cem(cfg: DictConfig):
     
 
     football_pose = torch.zeros(13, device=envs.device)
-    football_pose[0] = 0.2
+    football_pose[0] = -0.2
     football_pose[2] = 0.8
     football_pose[6] = 1.0
     envs.set_initial_football_state(football_pose)

@@ -28,7 +28,7 @@ env:
   collision_reward_scale: 0.5
   manipulability_reward_scale: 0.5
 
-  stability_time: 3.0
+  stability_time: 0.5
   # Is this option even needed?
   asset:
     assetRoot: "../../assets"

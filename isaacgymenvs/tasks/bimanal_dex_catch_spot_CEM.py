@@ -110,7 +110,7 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
 
         
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
-
+        self._refresh()
 
     def create_sim(self):
         self.sim_params.up_axis = gymapi.UP_AXIS_Z
@@ -410,12 +410,49 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         self._init_object_state = torch.zeros(self.num_envs, 13, device=self.device)
         self._init_object_state[:, 7] = 1.0     # unit quaternion
 
+        self._init_states()
+
+    def _init_states(self):
+        env_ptr = self.envs[0]
+        spot_handle = 0
+        self.handles = {
+            # UR3
+            "hand_left": self.gym.find_actor_rigid_body_handle(env_ptr, spot_handle, "robot1/end_effector_link"),
+            "hand_right": self.gym.find_actor_rigid_body_handle(env_ptr, spot_handle, "robot2/end_effector_link"),
+            "base_left": self.gym.find_actor_rigid_body_handle(env_ptr, spot_handle, "robot1/link1"),
+            "base_right": self.gym.find_actor_rigid_body_handle(env_ptr, spot_handle, "robot2/link2"),
+            "football": self.gym.find_actor_rigid_body_handle(env_ptr, self._obj_ref_id, "football"),
+        }
+
+        bodies_to_detect_contacts = ["env", "robot1/link1", "robot1/link2", "robot1/link3",
+                                     "robot1/link4", "robot1/link5", "robot1/link6", "robot1/link7",
+                                     "robot1/thumb_base", "robot2/link1", "robot2/link2", "robot2/link3",
+                                     "robot2/link4", "robot2/link5", "robot2/link6", "robot2/link7",
+                                     "robot2/thumb_base"
+                                     ]
+        
+        self.ids_for_arm_contact = get_indices_from_dict(self.spot_body_dict, bodies_to_detect_contacts)
+        self._spot_jacobian_tensor = self.gym.acquire_jacobian_tensor(self.sim, "spot")
+        self.spot_jacobian = gymtorch.wrap_tensor(self._spot_jacobian_tensor)
 
     def set_initial_football_state(self, pose):
         self._init_object_state = pose.unsqueeze(0).expand(self.num_envs, -1)
         # self.football_pose
 
 
+    def _update_states(self):
+        pass
+
+    def _refresh(self):
+        self.gym.refresh_actor_root_state_tensor(self.sim)
+        self.gym.refresh_dof_state_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
+        self.gym.refresh_jacobian_tensors(self.sim)
+        self.gym.refresh_mass_matrix_tensors(self.sim)
+        self.gym.refresh_net_contact_force_tensor(self.sim)
+
+        # Refresh states
+        self._update_states()
 
     def _create_object_envs(self, asset_root):
         football_asset_file = "urdf/football.urdf"
@@ -472,6 +509,62 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
     #    - e.g. apply actions
 
     def post_physics_step(self):
+        self._refresh()
+
+        # contact_reward = self.compute_contact_rewards()
+
+        stability_reward = self.compute_stability_reward()
+
+        manipulability_reward = self.compute_manipulability_reward()
+
         pass
         # implement post-physics simulation code here
         #    - e.g. compute reward, compute observations
+
+
+    def compute_contact_rewards(self):
+        contact_reward = torch.zeros(self.num_envs, device=self.device)
+        # contacts = self.gym.get_rigid_contacts(self.sim)
+        import pdb; pdb.set_trace()
+        
+
+
+
+    def compute_manipulability_reward(self):
+        
+        # robot1_eef_joint = self.gym.find_actor_dof_index(self.envs[0], self._spot_id, "robot1/end_effector_link")
+        # robot2_eef_joint = self.gym.find_actor_dof_index(self.envs[0], self._spot_id, "robot2/end_effector_link")
+
+        robot1_eef_jacobian = self.spot_jacobian[:, self.handles["hand_left"], :, :]
+        robot2_eef_jacobian = self.spot_jacobian[:, self.handles["hand_right"], :, :]
+        robot1_manip = torch.sqrt(torch.clamp(torch.linalg.det(torch.bmm(robot1_eef_jacobian, robot1_eef_jacobian.transpose(1, 2))),min=1e-6))
+        robot2_manip = torch.sqrt(torch.clamp(torch.linalg.det(torch.bmm(robot2_eef_jacobian, robot2_eef_jacobian.transpose(1, 2))),min=1e-6))
+
+        # Better to return the sum or multiply
+
+        return robot1_manip + robot2_manip
+
+
+
+    def compute_stability_reward(self):
+        # get current root states
+        root_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
+        root_states = gymtorch.wrap_tensor(root_tensor)
+
+        # get only the object states
+        object_indices = torch.arange(self.num_envs, device=self.device) * 2 + self.objects["football"].id
+        object_states = root_states[object_indices, :]
+
+
+        # get the current pose and initial pose 
+        current_pose = object_states[:, :3]
+        initial_pose = self._init_object_state[:, :3]
+
+        # euclidean distance shap should be [num_envs]
+        dist = torch.norm(current_pose - initial_pose, dim=1)
+
+        stability_reward = -dist
+        import pdb; pdb.set_trace()
+
+        return stability_reward
+
