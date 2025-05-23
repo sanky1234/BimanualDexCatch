@@ -21,7 +21,7 @@ from gym import spaces
 # For contact rewards
 import pybullet as p
 import pybullet_data
-from scipy.spatial import ConvexHull
+from scipy.spatial import ConvexHull, Delaunay
 
 
 def get_assets(attr_dict):
@@ -112,7 +112,7 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
 
         self.input_control_names = self.cfg["input_control_names"]
 
-
+        self.gravity = self.cfg["env"]["gravity"]
         
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
         self._refresh()
@@ -121,7 +121,7 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         self.physicsClient = p.connect(p.GUI)
         # Set up environment
         p.setAdditionalSearchPath(pybullet_data.getDataPath())  # For plane.urdf and other data
-        p.setGravity(0, 0, -9.81)
+        p.setGravity(0, 0, self.gravity )
         p.setPhysicsEngineParameter(contactBreakingThreshold=0.01)
 
         self.planeId = p.loadURDF("plane.urdf")
@@ -142,7 +142,7 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         self.sim_params.up_axis = gymapi.UP_AXIS_Z
         self.sim_params.gravity.x = 0.0 
         self.sim_params.gravity.y = 0.0
-        self.sim_params.gravity.z = -9.81
+        self.sim_params.gravity.z = self.gravity 
 
         self.sim = super().create_sim(self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params) 
         self._create_ground_plane() 
@@ -224,8 +224,12 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
 
         for i in range(self.num_spot_dofs):
             if self.physics_engine == gymapi.SIM_PHYSX:
-                spot_dof_props['stiffness'][i] = 1000.0
-                spot_dof_props['damping'][i] = 300.0
+                # spot_dof_props['stiffness'][i] = 1000.0
+                # spot_dof_props['damping'][i] = 300.0
+                spot_dof_props['stiffness'][i] = 300.0
+                spot_dof_props['damping'][i] = 50.0
+                # spot_dof_props['effort'][i] = 100.0
+            
             else: 
                 spot_dof_props['stiffness'][i] = 7000.0
                 spot_dof_props['damping'][i] = 50.0
@@ -537,11 +541,23 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
     def post_physics_step(self):
         self._refresh()
 
-        contact_reward = self.compute_contact_rewards()
+        contact_reward = self.reward_scales["contact"]*self.compute_contact_rewards()
 
-        stability_reward = self.compute_stability_reward()
+        stability_reward = self.reward_scales["success"]*self.compute_stability_reward()
 
-        manipulability_reward = self.compute_manipulability_reward()
+        manipulability_reward = self.reward_scales["manipublity"]*self.compute_manipulability_reward()
+
+
+
+        # self.reward_scales = {
+        #     "success": self.cfg["env"]["success_reward_scale"],
+        #     "catch": self.cfg["env"]["catch_reward_scale"],
+        #     "catch_dist": self.cfg["env"]["catch_dist_reward_scale"],
+        #     "contact": self.cfg["env"]["contact_reward_scale"],
+        #     "collision": self.cfg["env"]["collision_reward_scale"],
+        #     "manipublity": self.cfg["env"]["manipulability_reward_scale"],
+        # }
+
 
         self.total_reward = stability_reward + manipulability_reward + contact_reward
 
@@ -598,11 +614,20 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
                 
                 points_on_football = np.array([contact[5] for contact in contacts])
 
-                if len(points_on_football) > 4:
+                if len(points_on_football) >= 4:
                     points_np = np.array(points_on_football)
+                    delaunay = Delaunay(points_np)
+
                     hull = ConvexHull(points_np)
                     volume = hull.volume
-                    contact_reward[i] += volume
+
+                    is_inside = delaunay.find_simplex(object_states[i, :3].cpu().numpy()) >= 0
+
+                    scale_volume = 1.0
+                    if not is_inside:
+                        scale_volume = 0.1
+
+                    contact_reward[i] += scale_volume* volume
                 else:
                     contact_reward[i] -= 1.0
             print("Environment: ", i , " Contact points: ", len(contacts), " Contact reward: ", contact_reward[i].item())
