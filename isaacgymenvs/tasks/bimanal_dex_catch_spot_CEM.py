@@ -555,7 +555,9 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         # contacts = self.gym.get_rigid_contacts(self.sim)
         # get current joint dof 
         joint_dof_tensor = self.gym.acquire_dof_state_tensor(self.sim)
-        joint_dof_states = gymtorch.wrap_tensor(joint_dof_tensor).view(self.num_envs, 2, self.num_spot_dofs)
+        joint_dof_states = gymtorch.wrap_tensor(joint_dof_tensor)
+        
+        joint_state_pos = joint_dof_states[:, 0].view(self.num_envs, self.num_spot_dofs)
 
         # get current root states
         root_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
@@ -570,11 +572,16 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
             # set the pybullet scene
             p.resetBasePositionAndOrientation(self.pybullet_football, object_states[i, :3].cpu().numpy(), object_states[i, 3:7].cpu().numpy())
             p.resetBaseVelocity(self.pybullet_football, object_states[i, 7:10].cpu().numpy(), object_states[i, 10:13].cpu().numpy())
+            # print("Pybullet index: ", pybullet_index, " Gym index: ", gym_index)
+       
             for j,name in enumerate(self.input_control_names):
                 pybullet_index = self.pybullet_joint_idx_mapping[j]
                 gym_index = self.joint_idx_mapping[j]
-                p.resetJointState(self.pybullet_robot, pybullet_index, joint_dof_states[i,0, gym_index].cpu().numpy())
+
+              
+                p.resetJointState(self.pybullet_robot, pybullet_index, joint_state_pos[i,gym_index].cpu().numpy())
             
+
             p.stepSimulation()
 
 
