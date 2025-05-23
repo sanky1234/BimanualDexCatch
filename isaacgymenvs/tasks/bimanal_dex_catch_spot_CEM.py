@@ -533,13 +533,15 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
     def post_physics_step(self):
         self._refresh()
 
-        contact_reward = self.compute_contact_rewards()
+        # contact_reward = self.compute_contact_rewards()
 
         stability_reward = self.compute_stability_reward()
 
         manipulability_reward = self.compute_manipulability_reward()
 
-        pass
+        self.total_reward = stability_reward + manipulability_reward
+
+        # pass
         # implement post-physics simulation code here
         #    - e.g. compute reward, compute observations
 
@@ -581,7 +583,7 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
                 print(f"Contact distance: {c[8]}, normal force: {c[9]}")
                 print('---')
 
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
 
         
 
