@@ -17,6 +17,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 import itertools
 import pandas as pd
+from collections import deque
 
 def truncated_gaussian_samples(mean, std, low, high, num_samples):
     """
@@ -72,24 +73,27 @@ def launch_cem(cfg: DictConfig):
     percent_elite = 0.25
     max_steps = 100
     # Ranges for position and orientation
-    x_range = np.arange(-0.2, 0.487 + 1e-6, 0.1)
-    y_range = np.arange(-0.2, 0.1 + 1e-6, 0.1)
+    x_range = np.arange(-0.1, 0.487 + 1e-6, 0.1)
+    y_range = np.arange(-0.1, 0.1 + 1e-6, 0.1)
     z_range = np.arange(0.6, 1.52 + 1e-6, 0.1)
-    pitch_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/18.0)
-    yaw_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/18.0)
-    roll_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/18.0)
+    pitch_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/6.0)
+    yaw_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/6.0)
+    # roll_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/6.0)
 
+    stagnation_window = 10
+    stagnation_thresh = 1e-3
 
     for x_pose in x_range:
         for y_pose in y_range:
             for z_pose in z_range:
                 for ball_pitch in pitch_range:
                     for ball_yaw in yaw_range:
-                        for ball_roll in roll_range:
+                        # for ball_roll in roll_range:
                             football_pose = torch.zeros(13, device=envs.device)
                             football_pose[0] = x_pose
                             football_pose[1] = y_pose
                             football_pose[2] = z_pose
+                            ball_roll = 0
                             r = R.from_euler('xyz', [ball_pitch, ball_yaw, ball_roll], degrees=False)
                             football_quat = r.as_quat() # returns (x, y, z, w)
                             football_pose[3] = football_quat[0]
@@ -104,6 +108,8 @@ def launch_cem(cfg: DictConfig):
                             std = torch.ones(len(envs.joint_idx_mapping), device=envs.device) * 1.0
                             low = envs._dof_lower_limits[envs.joint_idx_mapping]
                             high = envs._dof_upper_limits[envs.joint_idx_mapping]
+                            std_history = deque(maxlen=stagnation_window)
+
                             for step in range(max_steps):
                                     actions = truncated_gaussian_samples(
                                         mean=mean,
@@ -127,6 +133,13 @@ def launch_cem(cfg: DictConfig):
                                     mean = elites.mean(axis=0)
                                     std = elites.std(axis=0)
 
+                                    std_history.append(std.clone())
+                                    if len(std_history) == stagnation_window:
+                                        std_diff = torch.abs(std_history[-1] - std_history[0])
+                                        if torch.all(std_diff < stagnation_thresh):
+                                            print(f"Early stopping at iteration {iteration} due to variance stagnation.")
+                                            break
+
                                     if verbose:
                                         print(f"Iter {step}: best reward = {rewards[elite_indices[-1]]:.3f}, mean = {mean}, std = {std}")
                             elites_np = elites.cpu().numpy()  # (N, action_dim)
@@ -137,7 +150,11 @@ def launch_cem(cfg: DictConfig):
                             action_headers = [name for name in envs.input_control_names]
                             headers = pose_headers + action_headers
                             df = pd.DataFrame(rows, columns=headers)
-                            df.to_csv(f"./cem_results/football_pose_{x_pose}_{y_pose}_{z_pose}_{ball_pitch}_{ball_yaw}_{ball_roll}.csv", index=False)
+                            current_date = datetime.now().strftime("%Y-%m-%d")
+
+
+
+                            df.to_csv(f"./cem_results/football_pose_{x_pose}_{y_pose}_{z_pose}_{ball_pitch}_{ball_yaw}_{ball_roll}_{current_date}.csv", index=False)
                             print(f"Saved elite actions for football pose {x_pose}, {y_pose}, {z_pose}, {ball_pitch}, {ball_yaw}, {ball_roll} to CSV.")
 
 

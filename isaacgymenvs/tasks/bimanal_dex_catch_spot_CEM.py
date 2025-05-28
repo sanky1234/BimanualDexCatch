@@ -118,7 +118,7 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         self._refresh()
 
         ####################### pybullet init  for contact detection #######################
-        self.physicsClient = p.connect(p.GUI)
+        self.physicsClient = p.connect(p.DIRECT)
         # Set up environment
         p.setAdditionalSearchPath(pybullet_data.getDataPath())  # For plane.urdf and other data
         p.setGravity(0, 0, self.gravity )
@@ -621,9 +621,10 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
 
                     hull = ConvexHull(points_np)
                     volume = hull.volume
-
-                    is_inside = delaunay.find_simplex(object_states[i, :3].cpu().numpy()) >= 0
-
+                    try:
+                        is_inside = delaunay.find_simplex(object_states[i, :3].cpu().numpy()) >= 0
+                    except Exception as e: 
+                        is_inside = False 
                     scale_volume = 1.0
                     if not is_inside:
                         scale_volume = 0.1
