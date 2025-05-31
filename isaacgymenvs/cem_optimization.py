@@ -73,15 +73,16 @@ def launch_cem(cfg: DictConfig):
     percent_elite = 0.25
     max_steps = 100
     # Ranges for position and orientation
-    x_range = np.arange(-0.1, 0.487 + 1e-6, 0.1)
-    y_range = np.arange(-0.1, 0.1 + 1e-6, 0.1)
-    z_range = np.arange(0.6, 1.52 + 1e-6, 0.1)
-    pitch_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/6.0)
-    yaw_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/6.0)
+    x_range = np.arange(0, 0.487 + 1e-6, 0.1)
+    y_range = np.arange(0.0, 0.1 + 1e-6, 0.1)
+    z_range = np.arange(0.8, 1.52 + 1e-6, 0.1)
+    pitch_range = np.arange(0, np.pi/6.0 + 1e-6, np.pi/3.0)
+    yaw_range = np.arange(0, np.pi/6.0 + 1e-6, np.pi/3.0)
     # roll_range = np.arange(-np.pi/6.0, np.pi/6.0 + 1e-6, np.pi/6.0)
 
     stagnation_window = 10
     stagnation_thresh = 1e-3
+    buffer_size = 0.5 * percent_elite
 
     for x_pose in x_range:
         for y_pose in y_range:
@@ -102,14 +103,27 @@ def launch_cem(cfg: DictConfig):
                             football_pose[6] = football_quat[3]
 
 
+                            football_vel = [5.0, 0.0, 0.0]  # initial ball linear velocity
+                            football_vel_adjusted = r.apply(football_vel)  # adjust velocity according to orientation
+
+                            football_pose[7] = football_vel_adjusted[0]  # ball linear velocity x
+                            football_pose[8] = football_vel_adjusted[1] # ball linear velocity y
+                            football_pose[9] = football_vel_adjusted[2] # ball linear velocity z
+                            football_pose[10] = 0.0
+                            football_pose[11] = 0.0
+                            football_pose[12] = 0.0
+
+
                             envs.set_initial_football_state(football_pose)
                             num_elites = int(envs.num_envs * percent_elite)
+                            buffer_len = int(num_elites * buffer_size)
                             mean = torch.zeros(len(envs.joint_idx_mapping), device=envs.device)
                             std = torch.ones(len(envs.joint_idx_mapping), device=envs.device) * 1.0
                             low = envs._dof_lower_limits[envs.joint_idx_mapping]
                             high = envs._dof_upper_limits[envs.joint_idx_mapping]
                             std_history = deque(maxlen=stagnation_window)
-
+                            # elite_buffer = torch.zeros((buffer_len, len(envs.joint_idx_mapping)), device=envs.device)
+                            elite_buffer = []
                             for step in range(max_steps):
                                     actions = truncated_gaussian_samples(
                                         mean=mean,
@@ -129,6 +143,20 @@ def launch_cem(cfg: DictConfig):
                                     elite_indices = rewards.argsort()[-num_elites:]  # top-k
                                     
                                     elites = envs.actual_joint_states[elite_indices]
+
+                                    positive_elites = torch.where(elites > 0)[0]
+                                    if len(positive_elites) > 0:
+                                        pos_elite_rewards = rewards[positive_elites]
+                                        pos_elite_actions = envs.actual_joint_states[positive_elites]
+
+                                        for i in range(len(pos_elite_rewards)):
+                                            elite_buffer.append((pos_elite_actions[i].clone(), pos_elite_rewards[i].item()))
+
+                                        elite_buffer = sorted(elite_buffer, key=lambda x: x[1], reverse=True)[:buffer_len]
+                                        buffer_elites = torch.stack([x[0] for x in elite_buffer], dim=0)
+
+                                        elites = torch.cat((elites, buffer_elites), dim=0)  # combine elites with buffer
+                    
                                     
                                     mean = elites.mean(axis=0)
                                     std = elites.std(axis=0)
@@ -154,7 +182,7 @@ def launch_cem(cfg: DictConfig):
 
 
 
-                            df.to_csv(f"./cem_results/football_pose_{x_pose}_{y_pose}_{z_pose}_{ball_pitch}_{ball_yaw}_{ball_roll}_{current_date}.csv", index=False)
+                            df.to_csv(f"./cem_results/May31/football_pose_{x_pose}_{y_pose}_{z_pose}_{ball_pitch}_{ball_yaw}_{ball_roll}_{current_date}.csv", index=False)
                             print(f"Saved elite actions for football pose {x_pose}, {y_pose}, {z_pose}, {ball_pitch}, {ball_yaw}, {ball_roll} to CSV.")
 
 

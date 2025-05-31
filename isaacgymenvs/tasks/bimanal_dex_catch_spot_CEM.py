@@ -22,6 +22,7 @@ from gym import spaces
 import pybullet as p
 import pybullet_data
 from scipy.spatial import ConvexHull, Delaunay
+import xml.etree.ElementTree as ET
 
 
 def get_assets(attr_dict):
@@ -47,6 +48,16 @@ def zero_state(ref_tensor: torch.tensor, obj_size_vec, device):
     _tensor[:, :, 6] = 1.0
     return _tensor
 
+def parse_disabled_collisions(srdf_path):
+    tree = ET.parse(srdf_path)
+    root = tree.getroot()
+
+    disabled_collisions = []
+    for dc in root.findall("disable_collisions"):
+        link1 = dc.attrib["link1"]
+        link2 = dc.attrib["link2"]
+        disabled_collisions.append((link1, link2))
+    return disabled_collisions
 
 @torch.jit.script
 def axisangle2quat(vec, eps=1e-6):
@@ -119,11 +130,14 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
 
         ####################### pybullet init  for contact detection #######################
         self.physicsClient = p.connect(p.DIRECT)
+        # self.phsyicsClient = p.connect(p.GUI)
         # Set up environment
         p.setAdditionalSearchPath(pybullet_data.getDataPath())  # For plane.urdf and other data
         p.setGravity(0, 0, self.gravity )
         p.setPhysicsEngineParameter(contactBreakingThreshold=0.01)
 
+        self.disabled_collisions = parse_disabled_collisions("/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/papras_psyonic_spot.srdf")
+        self.py_name_to_index = {}
         self.planeId = p.loadURDF("plane.urdf")
         self.pybullet_robot = p.loadURDF("/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/spot_description/spot_7dof_psyonic_no_base.urdf", [0.0, 0.0, 0.7], [0,0,0,1], useFixedBase=True)
         self.pybullet_football = p.loadURDF("/home/sankalp/ws_spot_catching/src/BimanualDexCatch/assets/urdf/football.urdf", [0.2, 0.0, 0.3], [0,0,0,1], useFixedBase=False)
@@ -134,9 +148,18 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
         for i,name in enumerate(self.input_control_names):
             for j in range(self.pybullet_num_joints):
                 joint_name = p.getJointInfo(self.pybullet_robot, j)[1].decode("utf-8")
+                self.py_name_to_index[joint_name] = j
                 if name == joint_name:
                     self.pybullet_joint_idx_mapping[i] = j
                     break
+        
+        for link1, link2 in self.disabled_collisions:
+            link1_index = self.py_name_to_index.get(link1, -1)
+            link2_index = self.py_name_to_index.get(link2, -1)
+            
+            p.setCollisionFilterPair(self.pybullet_robot, self.pybullet_robot, link1_index, link2_index, enableCollision=0)
+
+  
 
     def create_sim(self):
         self.sim_params.up_axis = gymapi.UP_AXIS_Z
@@ -605,9 +628,18 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
             # get all the contact points between the robot and the football
             contacts = p.getContactPoints(self.pybullet_robot, self.pybullet_football)
             contact_floor = p.getContactPoints(self.pybullet_football, self.planeId)
+
+            self_collisions = p.getContactPoints(self.pybullet_robot, self.pybullet_robot)
+
+            if len(self_collisions) > 0:
+                # print("Self collisions: ", self_collisions)
+                contact_reward[i] += -20.0
+                # print("Environment: ", i , " Self collisions: ", len(self_collisions), " Contact reward: ", contact_reward[i].item())
+                continue
+
             # not a successful catch if the robot is not in contact with the ball
             if (len(contacts) == 0) or (len(contact_floor) > 0):
-                contact_reward[i] += -10.0
+                contact_reward[i] += -30.0
 
             if len(contacts) > 0:
                 # print("Contact points: ", contacts)
@@ -675,6 +707,8 @@ class BimanualDexCatchSpotCEM(VecTaskSimple):
 
         # euclidean distance shap should be [num_envs]
         dist = torch.norm(current_pose - initial_pose, dim=1)
+
+        
 
         stability_reward = -dist
         return stability_reward

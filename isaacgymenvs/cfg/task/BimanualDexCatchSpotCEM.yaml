@@ -21,15 +21,15 @@ env:
   aggregateMode: 3
  
   # reward scales
-  success_reward_scale: 5.0
+  success_reward_scale: 10.0
   catch_reward_scale: 1.0
   catch_dist_reward_scale: 1.0
-  contact_reward_scale: 1.0
+  contact_reward_scale: 5.0
   collision_reward_scale: 1.0
   manipulability_reward_scale: 1.0
-  gravity: -30.0
+  gravity: -20.0
 
-  stability_time: 0.5
+  stability_time: 0.7
   # Is this option even needed?
   asset:
     assetRoot: "../../assets"
